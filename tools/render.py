@@ -448,6 +448,15 @@ class Traffic:
                               thickness=max(1, int(round(ctx.px(4)))))
                 on = np.unique(lab[(spine > 0) & (lit > 0)])
                 keep = np.isin(lab, on[on > 0]).astype(np.float32)
+                for r in p.get("fill_area", []):
+                    # junctions: everything road-bright in the box joined to
+                    # the road (ramps, both carriageways) lights up together
+                    box = ctx.region_mask(r)
+                    lit2 = ((ctx.luma > r.get("luma", fl)) & (box > 0)).astype(np.uint8)
+                    n2, lab2 = cv2.connectedComponents(lit2, connectivity=8)
+                    on2 = np.unique(lab2[(cv2.dilate(keep, ellipse(ctx.px(1))) > 0) & (lit2 > 0)])
+                    keep = np.maximum(keep, np.isin(lab2, on2[on2 > 0]).astype(np.float32))
+                    band = np.maximum(band, (box > 0).astype(band.dtype))
                 # feather into the road's slightly dimmer edges
                 near = cv2.dilate(keep, ellipse(ctx.px(1.5)))
                 road = np.maximum(keep, near * smoothstep(fl - 0.12, fl, ctx.luma)) * band
@@ -739,12 +748,56 @@ class Rain:
         f += (buf.astype(np.float32) / 255)[..., None] * self.col
 
 
+class Skyline:
+    """Depth on the horizon: lit skyscrapers glow up one at a time, and the
+    red aviation lights already on the towers blink. Brighten-only, so
+    nothing ever leaves a dark spot."""
+
+    def __init__(self, ctx, cfg):
+        self.T, self.ctx = ctx.T, ctx
+        lo = cfg.get("min_luma", 0.35)
+        self.items = []
+        for it in cfg.get("buildings", []):
+            m = ctx.region_mask(it) * smoothstep(lo, lo + 0.15, ctx.luma) * ctx.free
+            layer = ctx.base * m[..., None]
+            bloom = blur(layer, ctx.px(cfg.get("bloom_radius", 6)))
+            self.items.append(dict(layer=layer, bloom=bloom, at=it["at"],
+                                   dur=it.get("seconds", 3.0),
+                                   bb=bbox(blur(m, ctx.px(cfg.get("bloom_radius", 6)) * 2) > 0.002)))
+        self.boost = cfg.get("boost", 0.8)
+        self.bloom = cfg.get("bloom", 0.8)
+        # aviation lights: the red lights already on the tower tops
+        bc = cfg.get("beacons")
+        self.beacons = bc
+        if bc:
+            self.beacon_pos = ctx.pts(bc["points"])
+            self.spr = sprite_dot(ctx.px(bc.get("size", 2.5)))
+            self.bcol = np.array(bc.get("color", [1.0, 0.15, 0.25]), np.float32)
+
+    def apply(self, f, t):
+        for it in self.items:
+            dt = (t - it["at"]) % self.T
+            if dt >= it["dur"] or it["bb"] is None:
+                continue
+            e = math.sin(math.pi * dt / it["dur"]) ** 2
+            y0, y1, x0, x1 = it["bb"]
+            f[y0:y1, x0:x1] += (it["layer"][y0:y1, x0:x1] * self.boost
+                                + it["bloom"][y0:y1, x0:x1] * self.bloom) * e
+        if self.beacons:
+            per = self.beacons.get("period", 1.5)
+            on = self.beacons.get("on", 0.35)
+            u = (t % per) / on
+            e = math.sin(math.pi * u) ** 2 if u < 1 else 0.0
+            for x, y in self.beacon_pos:
+                stamp(f, self.spr, x, y, self.bcol * e * self.beacons.get("strength", 1.2))
+
+
 # order matters: stars come off the sky before the clouds move, and the road
 # tracer is set up before the moon and towers that sync to it
 EFFECTS = [("stars", Stars), ("clouds", Clouds), ("traffic", Traffic), ("moon_glow", MoonGlow),
            ("window_lights", Lights), ("house_lights", Lights), ("bridge_neon", Neon),
            ("water", Water), ("sparkles", Sparkles), ("fireflies", Fireflies),
-           ("shooting_star", ShootingStar), ("rain", Rain)]
+           ("shooting_star", ShootingStar), ("rain", Rain), ("skyline", Skyline)]
 
 
 def build(scene, size):

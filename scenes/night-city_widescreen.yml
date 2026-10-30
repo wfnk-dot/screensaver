@@ -34,7 +34,7 @@ effects:
     direction: left
     scrolls_per_loop: 1  # clouds travel the full screen width once per loop
     contrast: 1.35       # clouds a little punchier than the still
-    lightning: [[5.0, 0.7, 1.0], [5.9, 0.4, 0.6], [19.5, 0.8, 1.1]]   # [time, seconds, strength]
+    lightning: [[5.0, 0.7, 2.2], [5.9, 0.45, 1.5], [19.5, 0.8, 2.4], [20.4, 0.35, 1.4]]   # [time, seconds, strength]
     hold:
       - {center: [999, 113], radius: 34}   # the moon and its halo stay put
 
@@ -42,10 +42,10 @@ effects:
     center: [999, 113]
     radius: 17
     glow_radius: 170
-    strength: 0.5
+    strength: 0.8
     sync:                # swells gently as the road light reaches the end of the road
       delay: 0.6
-      rest: 0.35         # glow between swells, as a share of the peak
+      rest: 0.45         # glow between swells, as a share of the peak
       sharpness: 1.5
 
   window_lights:         # office towers on the skyline (off: too small to place well)
@@ -74,28 +74,27 @@ effects:
 
   bridge_neon:
     min_luma: 0.22
-    flash_on_tracer: 1.0 # each tower flashes as the road light passes it
-    pulse: 0.35
-    pulse_cycles: 3
-    bloom: 1.1
+    pulse: 0.15          # a slow, steady neon breathing; no flashes
+    pulse_cycles: 2
+    bloom: 0.8
     bloom_radius: 9
     items:
       - lines: [[[800, 398], [800, 542]], [[839, 398], [839, 542]],
                 [[796, 404], [843, 404]], [[798, 472], [841, 472]]]
         width: 6                          # left tower
         phase: 0.0
-        flickers: [[4.2, 0.35, 0.9], [16.8, 0.25, 0.8], [24.5, 0.5, 0.9]]
+        flickers: []
       - lines: [[[1177, 364], [1177, 528]], [[1205, 364], [1205, 528]],
                 [[1174, 369], [1208, 369]], [[1175, 420], [1207, 420]]]
         width: 6                          # right tower
         phase: 0.35
-        flickers: [[9.6, 0.45, 0.9], [21.3, 0.3, 0.85]]
+        flickers: []
 
   traffic:
     min_luma: 0.32
     neon_color: road     # the road's own orange at full neon saturation
-    glow: 1.8
-    glow_radius: 10
+    glow: 1.2
+    glow_radius: 6
     paths:
       - name: bridge and highway, one neon tracer
         # traced along the road's brightest line at full resolution
@@ -119,14 +118,15 @@ effects:
                  [1092, 482], [1100, 480], [1108, 479], [1116, 478], [1124, 477], [1132, 476], [1140, 475], [1148, 473],
                  [1156, 472], [1164, 471], [1173, 470], [1181, 470], [1189, 469], [1197, 469], [1205, 469], [1213, 468],
                  [1221, 468], [1229, 467], [1238, 466], [1246, 466], [1254, 465], [1262, 464], [1270, 463], [1278, 463],
-                 [1286, 462], [1293, 458], [1299, 453], [1305, 447], [1307, 439], [1305, 432], [1303, 424], [1301, 416],
-                 [1298, 408], [1296, 401], [1301, 395], [1309, 393], [1317, 391], [1325, 390], [1333, 389], [1341, 389],
-                 [1349, 389], [1357, 388], [1365, 387], [1374, 386], [1382, 385], [1390, 384], [1398, 383], [1406, 383],
-                 [1414, 382], [1422, 381], [1430, 380], [1438, 379], [1446, 377], [1454, 376], [1462, 374], [1470, 372],
-                 [1478, 371], [1486, 369], [1494, 368], [1502, 367], [1520, 370], [1536, 369], [1552, 366], [1568, 364],
-                 [1584, 359]]
+                 [1286, 462], [1290, 462], [1310, 456], [1309, 448], [1304, 440], [1299, 432], [1295, 425], [1291, 416],
+                 [1289, 408], [1291, 402], [1298, 399], [1310, 397], [1320, 395], [1332, 392], [1345, 389], [1357, 388],
+                 [1365, 387], [1374, 386], [1382, 385], [1390, 384], [1398, 383], [1406, 383], [1414, 382], [1422, 381],
+                 [1430, 380], [1438, 379], [1446, 377], [1454, 376], [1462, 374], [1470, 372], [1478, 371], [1486, 369],
+                 [1494, 368], [1502, 367], [1520, 370], [1536, 369], [1552, 366], [1568, 364], [1584, 359]]
         width: 16        # how far from the line to look for the road
         fill: true       # light the road's full lit width
+        fill_area:       # the interchange: lane, ramp and both carriageways together
+          - {rect: [1258, 385, 1345, 462], luma: 0.5}
         mode: tracer
         laps: 4          # runs the road 4 times per loop (every 7.5s)
         gap: 0.25        # short pause before it starts again
@@ -136,7 +136,7 @@ effects:
 
   water:
     regions:
-      - {poly: [[0, 503], [915, 506], [800, 534], [600, 560], [0, 560]]}
+      - {poly: [[0, 509], [775, 509], [775, 538], [600, 560], [0, 560]]}   # stops short of the left tower
       - {poly: [[1070, 545], [2000, 541], [2000, 600], [1250, 600], [1100, 606], [1070, 596]]}
     exclude:
       - {poly: [[0, 650], [400, 598], [800, 533], [930, 506], [930, 528], [800, 553], [400, 618], [0, 670]]}
@@ -145,6 +145,25 @@ effects:
     wavelength: [6, 14]  # ripple spacing, varied per wave
     cycles: [8, 16]      # how many times each wave rolls by per loop
     glint: 0.4
+
+  skyline:               # depth on the horizon; brighten-only
+    min_luma: 0.35
+    boost: 0.6
+    bloom: 0.7
+    bloom_radius: 6
+    buildings:             # each lit tower glows up once per loop, one after another
+      - {rect: [862, 258, 884, 333], at: 1.0, seconds: 3.5}
+      - {rect: [1655, 262, 1696, 337], at: 6.0, seconds: 3.5}
+      - {rect: [1022, 262, 1048, 336], at: 10.5, seconds: 3.5}
+      - {rect: [1424, 282, 1475, 339], at: 15.0, seconds: 3.5}
+      - {rect: [708, 271, 745, 333], at: 19.5, seconds: 3.5}
+      - {rect: [273, 281, 313, 333], at: 24.0, seconds: 3.5}
+    beacons:               # the red aviation lights on the tower tops blink together
+      points: [[1029.7, 258.1], [1070.3, 257.0], [1079.1, 259.3], [1106.4, 258.7], [1129.7, 258.7]]
+      period: 1.5
+      on: 0.4
+      size: 3
+      strength: 1.4
 
   sparkles:              # stars flaring into four-point sparkles, as on the banner
     regions: [{rect: [0, 0, 2000, 225]}]
