@@ -170,7 +170,7 @@ class Stars:
         lo, hi = cfg.get("cycles", [1, 3])
         self.cyc = ctx.rng.integers(lo, hi + 1, n + 1).astype(np.float32)
         self.ph = ctx.rng.random(n + 1).astype(np.float32)
-        self.depth = cfg.get("depth", 0.8)
+        self.lo, self.hi = cfg.get("range", [0.1, 1.6])
         self.T = ctx.T
         self.bb = bbox(self.labels)
 
@@ -179,46 +179,66 @@ class Stars:
             return
         y0, y1, x0, x1 = self.bb
         w = 0.5 - 0.5 * np.cos(TAU * (self.cyc * t / self.T + self.ph))
-        g = 1 - self.depth * w ** 2
+        g = self.lo + (self.hi - self.lo) * w ** 2
         g[0] = 0
         f[y0:y1, x0:x1] += self.layer[y0:y1, x0:x1] * g[self.labels[y0:y1, x0:x1]][..., None]
 
 
 class Clouds:
-    """Clouds drift sideways. Two copies of the sky slide along and crossfade
-    (a flow-map loop), so the motion never has to jump back."""
+    """Clouds scroll across the sky like a time-lapse. The clouds are lifted
+    off the clear-sky colour, made to tile seamlessly left to right, and slide
+    exactly one tile per `scrolls_per_loop`, so the loop never jumps."""
 
     def __init__(self, ctx, cfg):
-        H, W = ctx.H, ctx.W
+        W = ctx.W
         top, bottom = ctx.px(cfg["full_until"]), ctx.px(cfg["sky_bottom"])
-        y = np.arange(H, dtype=np.float32)
-        m = 1 - smoothstep(top, bottom, y)
-        mask = np.repeat(m[:, None], W, 1)
-        for h in cfg.get("hold", []):  # e.g. the moon stays put
-            c = ctx.pts(h["center"])
-            r = ctx.px(h["radius"])
-            yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
+        self.rows = rows = int(math.ceil(bottom)) + 2
+        y = np.arange(rows, dtype=np.float32)
+        self.m = (1 - smoothstep(top, bottom, y))[:, None, None]
+        sky = ctx.base[:rows]
+
+        # clear-sky colour per row, plus the sky's broad left-right glow
+        clear = np.percentile(sky, cfg.get("clear_percentile", 20), axis=1).astype(np.float32)
+        clear = cv2.GaussianBlur(clear[:, None, :], (0, 0), sigmaX=0.1, sigmaY=ctx.px(6))[:, 0, :]
+        r = sky - clear[:, None, :]
+        r -= blur(r, W / 6)
+
+        # the moon stays where it is: take it out of the moving layer and
+        # fill the hole from the clouds around it
+        hold = np.zeros((rows, W), np.float32)
+        yy, xx = np.mgrid[0:rows, 0:W].astype(np.float32)
+        for h in cfg.get("hold", []):
+            c, rad = ctx.pts(h["center"]), ctx.px(h["radius"])
             d = np.hypot(xx - c[0], yy - c[1])
-            mask *= smoothstep(r, r * 2.2, d)
-        self.mask = mask
-        self.rows = int(math.ceil(bottom)) + 2
-        self.D = ctx.px(cfg["drift"]) * (-1 if cfg.get("direction", "left") == "left" else 1)
-        self.P = ctx.T / cfg.get("crossfades_per_loop", 2)
-        yy, xx = np.mgrid[0:self.rows, 0:W].astype(np.float32)
-        self.xx, self.yy = xx, yy
-        self.ctx = ctx
+            hold = np.maximum(hold, 1 - smoothstep(rad * 1.1, rad * 1.8, d))
+        keep = (1 - hold)[..., None]
+        # borrow real cloud texture from beside the moon
+        fill = np.roll(r, int(ctx.px(cfg.get("fill_offset", 140))), axis=1)
+        self.r0 = r * keep * self.m          # what's removed from the still image
+        moving = r * keep + fill * (1 - keep)
+
+        # make it tile: blend the last `S` columns into the first ones
+        S = int(W * cfg.get("seam_blend", 0.18))
+        P = W - S
+        a = smoothstep(0, 1, np.linspace(0, 1, S, dtype=np.float32))[None, :, None]
+        tile = moving[:, :P].copy()
+        tile[:, :S] = a * moving[:, :S] + (1 - a) * moving[:, P:P + S]
+        self.tile = tile * self.m
+        self.P = P
+        self.dist = P * cfg.get("scrolls_per_loop", 1)
+        self.sign = 1 if cfg.get("direction", "left") == "left" else -1
+        self.gain = cfg.get("contrast", 1.0)
+        self.x = np.arange(W, dtype=np.float64)
+        self.T = ctx.T
 
     def apply(self, f, t):
-        src = self.ctx.base[:self.rows]
-        m = self.mask[:self.rows]
-        p1 = (t / self.P) % 1.0
-        out = 0
-        for p in (p1, (p1 + 0.5) % 1.0):
-            w = 1 - abs(2 * p - 1)
-            mx = self.xx - (p - 0.5) * self.D * m
-            out = out + w * cv2.remap(src, mx, self.yy, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
-        mm = m[..., None] > 0
-        f[:self.rows] = np.where(mm, out, f[:self.rows])
+        s = self.sign * self.dist * t / self.T
+        u = (self.x + s) % self.P
+        i0 = np.floor(u).astype(np.int64)
+        fr = (u - i0).astype(np.float32)[None, :, None]
+        i1 = (i0 + 1) % self.P
+        moved = self.tile[:, i0] * (1 - fr) + self.tile[:, i1] * fr
+        f[:self.rows] += moved * self.gain - self.r0
 
 
 class MoonGlow:
@@ -369,13 +389,26 @@ class Traffic:
                 ys=ys, xs=xs, u=s / spacing, w=ctx.px(p.get("pulse_length", 30)) / spacing,
                 cyc=cyc * (1 if p.get("direction", "forward") == "forward" else -1),
                 rgb=ctx.base[ys, xs] * m[ys, xs][:, None], strength=p.get("strength", 0.6)))
+        self.glow = cfg.get("glow", 0.0)
+        self.glow_r = ctx.px(cfg.get("glow_radius", 5))
+        pad = int(self.glow_r * 3) + 1
+        ys = np.concatenate([p["ys"] for p in self.paths])
+        xs = np.concatenate([p["xs"] for p in self.paths])
+        self.bb = (max(0, ys.min() - pad), min(ctx.H, ys.max() + pad + 1),
+                   max(0, xs.min() - pad), min(ctx.W, xs.max() + pad + 1))
 
     def apply(self, f, t):
+        y0, y1, x0, x1 = self.bb
+        buf = np.zeros((y1 - y0, x1 - x0, 3), np.float32)
         for p in self.paths:
             d = (p["u"] - p["cyc"] * t / self.T) % 1.0
             d = np.minimum(d, 1 - d)
             pulse = np.exp(-(d / p["w"]) ** 2)
-            f[p["ys"], p["xs"]] += p["rgb"] * (p["strength"] * pulse)[:, None]
+            buf[p["ys"] - y0, p["xs"] - x0] += p["rgb"] * (p["strength"] * pulse)[:, None]
+        f[y0:y1, x0:x1] += buf
+        if self.glow:
+            # headlight glow spilling around each pulse
+            f[y0:y1, x0:x1] += blur(buf, self.glow_r) * self.glow
 
 
 class Water:
@@ -394,6 +427,11 @@ class Water:
         self.amp = ctx.px(cfg.get("amplitude", 1.5))
         self.lam = ctx.px(cfg.get("wavelength", 7))
         self.cyc = cfg.get("cycles", 12)
+        self.glint = cfg.get("glint", 0.0)
+        self.glint_lam = ctx.px(cfg.get("glint_wavelength", 40))
+        band = max(1, int(round(ctx.px(2))))
+        ph_rows = ctx.rng.random((y1 - y0) // band + 1).astype(np.float32) * TAU
+        self.row_ph = np.repeat(ph_rows, band)[:y1 - y0][:, None]
         self.T = ctx.T
         self.ctx = ctx
 
@@ -406,13 +444,117 @@ class Water:
         mx = (self.xx - x0 + dx * self.m).astype(np.float32)
         my = (self.yy - y0).astype(np.float32)
         rip = cv2.remap(src, mx, my, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+        if self.glint:
+            # bands of light running across the reflections
+            # glitter: short streaks, each row of water on its own phase
+            g = np.sin(TAU * self.xx / self.glint_lam + self.row_ph - ph)
+            g = np.maximum(g, 0) ** 3 - 0.25
+            lit = smoothstep(0.15, 0.5, luma(src))[..., None]
+            rip = rip * (1 + self.glint * g[..., None] * lit)
         f[y0:y1, x0:x1] = src + (rip - src) * self.m[..., None]
+
+
+def sprite_sparkle(R):
+    """A four-point star like the ones on Wyn's Discord banner."""
+    n = int(math.ceil(R)) * 2 + 1
+    c = n // 2
+    yy, xx = np.mgrid[0:n, 0:n].astype(np.float32) - c
+    w = max(0.6, R * 0.06)
+    arms = (np.exp(-yy ** 2 / (2 * w * w)) * np.clip(1 - np.abs(xx) / R, 0, 1) ** 2
+            + np.exp(-xx ** 2 / (2 * w * w)) * np.clip(1 - np.abs(yy) / R, 0, 1) ** 2)
+    core = np.exp(-(xx ** 2 + yy ** 2) / (2 * (R * 0.12) ** 2))
+    halo = np.exp(-(xx ** 2 + yy ** 2) / (2 * (R * 0.35) ** 2)) * 0.25
+    return np.clip(arms + core + halo, 0, 1.5)
+
+
+def sprite_dot(R):
+    n = int(math.ceil(R * 3)) * 2 + 1
+    c = n // 2
+    yy, xx = np.mgrid[0:n, 0:n].astype(np.float32) - c
+    d2 = xx ** 2 + yy ** 2
+    return np.exp(-d2 / (2 * (R * 0.35) ** 2)) + 0.35 * np.exp(-d2 / (2 * R ** 2))
+
+
+def stamp(f, spr, x, y, rgb):
+    """Add a sprite centred at (x, y), with sub-pixel placement."""
+    n = spr.shape[0]
+    ix, iy = int(math.floor(x)), int(math.floor(y))
+    fx, fy = x - ix, y - iy
+    M = np.float32([[1, 0, fx], [0, 1, fy]])
+    s = cv2.warpAffine(spr, M, (n + 1, n + 1))
+    x0, y0 = ix - n // 2, iy - n // 2
+    H, W = f.shape[:2]
+    a0, b0 = max(0, -y0), max(0, -x0)
+    a1, b1 = min(n + 1, H - y0), min(n + 1, W - x0)
+    if a1 <= a0 or b1 <= b0:
+        return
+    f[y0 + a0:y0 + a1, x0 + b0:x0 + b1] += s[a0:a1, b0:b1, None] * rgb
+
+
+class Sparkles:
+    """Now and then a star flares into a four-point sparkle."""
+
+    def __init__(self, ctx, cfg):
+        reg = ctx.regions(cfg["regions"])
+        if cfg.get("avoid"):
+            reg *= 1 - ctx.regions(cfg["avoid"])
+        L = ctx.luma * reg * ctx.free
+        # brightest local peaks, kept apart from each other
+        peaks = (L == cv2.dilate(L, ellipse(ctx.px(25)))) & (L > 0.05)
+        ys, xs = np.nonzero(peaks)
+        order = np.argsort(-L[ys, xs])[:cfg.get("count", 12)]
+        self.pos = np.stack([xs[order], ys[order]], 1).astype(np.float32)
+        n = len(self.pos)
+        self.spr = sprite_sparkle(ctx.px(cfg.get("size", 14)))
+        self.cyc = ctx.rng.integers(1, cfg.get("max_flares", 2) + 1, n)
+        self.ph = ctx.rng.random(n)
+        self.dur = cfg.get("flare_seconds", 1.6)
+        self.col = np.array(cfg.get("color", [0.95, 0.85, 1.0]), np.float32)
+        self.s = cfg.get("strength", 1.0)
+        self.T = ctx.T
+
+    def apply(self, f, t):
+        for (x, y), k, ph in zip(self.pos, self.cyc, self.ph):
+            period = self.T / k
+            u = ((t / period + ph) % 1.0) * period
+            if u < self.dur:
+                e = math.sin(math.pi * u / self.dur) ** 2
+                stamp(f, self.spr * e, x, y, self.col * self.s)
+
+
+class Fireflies:
+    """Soft glowing specks floating in the air, like the banner's."""
+
+    def __init__(self, ctx, cfg):
+        x0, y0, x1, y1 = [v * ctx.k for v in cfg["area"]]
+        n = cfg.get("count", 20)
+        r = ctx.rng
+        self.base = np.stack([r.uniform(x0, x1, n), r.uniform(y0, y1, n)], 1)
+        self.amp = np.stack([r.uniform(0.5, 1, n), r.uniform(0.5, 1, n)], 1) * ctx.px(cfg.get("wander", 40))
+        self.k = r.integers(1, 3, (n, 2))
+        self.ph = r.random((n, 2))
+        self.bk = r.integers(1, 4, n)
+        self.bph = r.random(n)
+        sizes = cfg.get("size", [3, 6])
+        self.spr = [sprite_dot(ctx.px(r.uniform(*sizes))) for _ in range(n)]
+        cols = np.array(cfg.get("colors", [[0.8, 0.55, 1.0], [1.0, 0.6, 0.9]]), np.float32)
+        self.col = cols[r.integers(0, len(cols), n)]
+        self.s = cfg.get("strength", 0.8)
+        self.T = ctx.T
+
+    def apply(self, f, t):
+        u = t / self.T
+        pos = self.base + self.amp * np.sin(TAU * (self.k * u + self.ph))
+        b = 0.25 + 0.75 * (0.5 - 0.5 * np.cos(TAU * (self.bk * u + self.bph))) ** 2
+        for (x, y), spr, c, bb in zip(pos, self.spr, self.col, b):
+            stamp(f, spr, x, y, c * self.s * bb)
 
 
 # order matters: stars come off the sky before the clouds move
 EFFECTS = [("stars", Stars), ("clouds", Clouds), ("moon_glow", MoonGlow),
            ("window_lights", Lights), ("house_lights", Lights), ("bridge_neon", Neon),
-           ("traffic", Traffic), ("water", Water)]
+           ("traffic", Traffic), ("water", Water), ("sparkles", Sparkles),
+           ("fireflies", Fireflies)]
 
 
 def build(scene, size):
@@ -475,14 +617,23 @@ def save_masks(ctx, fx, outdir):
     over = ctx.base.copy() * 0.45
     colours = {"stars": (1, 1, 1), "clouds": (0.3, 0.6, 1), "moon_glow": (1, 1, 0.6),
                "window_lights": (0, 1, 0.4), "house_lights": (0, 0.8, 1),
-               "bridge_neon": (1, 0.1, 0.4), "traffic": (1, 1, 0), "water": (0.2, 0.4, 1)}
+               "bridge_neon": (1, 0.1, 0.4), "traffic": (1, 1, 0), "water": (0.2, 0.4, 1),
+               "sparkles": (1, 0.9, 1), "fireflies": (0.9, 0.5, 1)}
     for key, e in fx:
         c = np.array(colours[key], np.float32)
         if isinstance(e, (Stars, Lights)):
             m = (e.labels > 0).astype(np.float32)
         elif isinstance(e, Clouds):
             m = np.zeros((ctx.H, ctx.W), np.float32)
-            m[:e.rows] = e.mask[:e.rows] * 0.35
+            m[:e.rows] = e.m[..., 0] * 0.35
+        elif isinstance(e, Sparkles):
+            m = np.zeros((ctx.H, ctx.W), np.float32)
+            for x, y in e.pos:
+                stamp(m[..., None], e.spr, x, y, np.ones(1, np.float32))
+        elif isinstance(e, Fireflies):
+            m = np.zeros((ctx.H, ctx.W), np.float32)
+            for (x, y), spr in zip(e.base, e.spr):
+                stamp(m[..., None], spr, x, y, np.ones(1, np.float32))
         elif isinstance(e, MoonGlow):
             m = luma(e.glow) * 0.5
         elif isinstance(e, Neon):
@@ -495,8 +646,9 @@ def save_masks(ctx, fx, outdir):
             m = np.zeros((ctx.H, ctx.W), np.float32)
             y0, y1, x0, x1 = e.bb
             m[y0:y1, x0:x1] = e.m * 0.6
+        m = np.clip(m, 0, 1)
         over = over * (1 - m[..., None]) + c * m[..., None]
-        cv2.imwrite(os.path.join(outdir, f"{key}.png"), (np.clip(m, 0, 1) * 255).astype(np.uint8))
+        cv2.imwrite(os.path.join(outdir, f"{key}.png"), (m * 255).astype(np.uint8))
     over = over * (1 - ctx.protect[..., None] * 0.6) + np.array([1, 0, 0]) * ctx.protect[..., None] * 0.6
     cv2.imwrite(os.path.join(outdir, "_overview.jpg"),
                 cv2.cvtColor((np.clip(over, 0, 1) * 255).astype(np.uint8), cv2.COLOR_RGB2BGR))
