@@ -177,22 +177,22 @@ effects:
     flare_seconds: 1.8
     strength: 1.0
 
-  city_wave:             # a lit band sweeps across the city twice a loop; never brighter than the photo
-    regions: [{rect: [0, 245, 2000, 500]}, {rect: [0, 600, 2000, 760]}]
-    size: 4
+  city_wave:             # a wave of light rolls through the city, twice a loop
+    regions: [{rect: [0, 250, 2000, 780]}]
+    feather: 30
     width: 300
     waves: 2
-    dim: 0.55            # lights outside the band sit at 45% of their own glow
+    gain: 0.3            # up to 30% brighter under the band, capped per pixel
     direction: right
 
   fireflies:             # soft specks in the empty, dark parts, like the banner's
     areas:
-      - {rect: [20, 525, 520, 600], count: 10}    # open water, left
-      - {rect: [20, 680, 640, 770], count: 16}    # dark hills, bottom left
-      - {rect: [1330, 560, 1980, 600], count: 5}  # open water, right
-      - {rect: [1250, 720, 1980, 790], count: 9}  # dark hills, bottom right
-    size: [5, 9]
+      - {rect: [20, 525, 520, 600], count: 4}     # open water, left
+      - {rect: [20, 680, 640, 770], count: 6}     # dark hills, bottom left
+      - {rect: [1330, 560, 1980, 600], count: 2}  # open water, right
+      - {rect: [1250, 720, 1980, 790], count: 3}  # dark hills, bottom right
+    size: [4, 7]
     wander: 45
     colors: [[0.78, 0.6, 1.0], [1.0, 0.62, 0.32]]   # lavender and amber: the image's own two colours
     min_glow: 0               # fade fully in and out, like the banner's
-    strength: 1.1
+    strength: 0.9

@@ -836,31 +836,25 @@ class Skyline:
 
 
 class CityWave:
-    """A slow wave of light sweeps across the city: only the lights already
-    in the photo get brighter as it passes, so nothing looks painted on."""
+    """A wave of light rolls through the city: as a soft band passes, the
+    whole city under it (lights and buildings) gets brighter. Each pixel
+    keeps its colour and stops at full brightness, so nothing turns pink
+    or white."""
 
     def __init__(self, ctx, cfg):
-        region = ctx.regions(cfg["regions"]) * ctx.free
-        opened = cv2.morphologyEx(ctx.base, cv2.MORPH_OPEN, ellipse(ctx.px(cfg.get("size", 4))))
-        own = np.clip(ctx.base - opened, 0, None) * blur(region, ctx.px(4))[..., None]
-        self.bb = bbox(region, pad=int(ctx.px(10)))
+        region = ctx.regions(cfg["regions"])
+        region = blur(region, ctx.px(cfg.get("feather", 30))) * ctx.free
+        self.bb = bbox(region > 0.01)
         y0, y1, x0, x1 = self.bb
-        self.own = own[y0:y1, x0:x1]
+        self.m = region[y0:y1, x0:x1, None]
+        self.src = ctx.base[y0:y1, x0:x1]
+        self.room = 1 / np.maximum(self.src.max(-1, keepdims=True), 1e-3)
         self.x = np.arange(x0, x1, dtype=np.float32)
         self.W, self.T = ctx.W, ctx.T
-        self.width = ctx.px(cfg.get("width", 260))
+        self.width = ctx.px(cfg.get("width", 300))
         self.waves = cfg.get("waves", 2)
-        self.boost = cfg.get("boost", 1.2)
-        self.bloom = cfg.get("bloom", 0.6)
-        self.br = ctx.px(cfg.get("bloom_radius", 4))
+        self.gain = cfg.get("gain", 0.35)
         self.dir = 1 if cfg.get("direction", "right") == "right" else -1
-        # dim mode: the wave shows the city as it is in the photo and the
-        # lights elsewhere sit a little dimmer, so nothing ever goes past
-        # the photo's own brightness (no pink, no white, no grain)
-        self.dim = cfg.get("dim")
-        if self.dim:
-            real = smoothstep(cfg.get("lit_lo", 0.04), cfg.get("lit_hi", 0.12), luma(self.own))
-            self.own = self.own * real[..., None]
 
     def apply(self, f, t):
         y0, y1, x0, x1 = self.bb
@@ -869,14 +863,11 @@ class CityWave:
         c = -2 * self.width + u * span
         if self.dir < 0:
             c = self.W - c
-        # each wave wraps around, so the crest is periodic over the loop
+        # the band wraps around, so it is periodic over the loop
         d = np.minimum(np.abs(self.x - c), span - np.abs(self.x - c))
         g = np.exp(-(d / self.width) ** 2)[None, :, None]
-        if self.dim:
-            f[y0:y1, x0:x1] -= self.own * (self.dim * (1 - g))
-            return
-        add = self.own * g * self.boost
-        f[y0:y1, x0:x1] += add + blur(add, self.br) * self.bloom
+        k = np.minimum(1 + self.gain * g * self.m, self.room)
+        f[y0:y1, x0:x1] += self.src * (k - 1)
 
 
 class Haze:
