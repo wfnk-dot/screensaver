@@ -25,3 +25,19 @@ road light and the moon swell line up on all three screens. For Part 2: start ea
 
 Put extras in `scenes/variants/<name>.yml` and layer them on a scene with
 `--variant scenes/variants/<name>.yml`.
+
+## Part 2: the screensaver (on the Mac)
+
+The spec is in [SCREENSAVER-SPEC.md](SCREENSAVER-SPEC.md). Part 1 (the loops)
+is done; Part 2 is built in a short Claude Code session on the Mac.
+
+Default mapping for the screensaver:
+
+| Screen | Native resolution | Loop |
+| --- | --- | --- |
+| Widescreen (main) | 3440 × 1440 | `loops/night-city_widescreen.mp4` |
+| 27" | 2560 × 1440 | `loops/night-city_27in.mp4` |
+| Arzopa | 1920 × 1080 | `loops/night-city_arzopa.mp4` |
+
+The MacBook is ignored (it's used through Universal Control). All loops are
+30 s; start each screen at `(current time) mod 30 s` so they stay in step.
