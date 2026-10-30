@@ -1,7 +1,0 @@
-# Purple mist drifting right, low over the water and the city.
-effects:
-  haze:
-    top: 440
-    bottom: 640
-    strength: 0.4
-    direction: right

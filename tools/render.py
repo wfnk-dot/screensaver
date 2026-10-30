@@ -259,7 +259,11 @@ class Clouds:
         # how much each strike lights the whole scene, sky to ground
         self.ambient = cfg.get("lightning_ambient", 0.0)
         if self.ambient:
-            fall = 1 - 0.6 * smoothstep(0, ctx.H, np.arange(ctx.H, dtype=np.float32))
+            # distant lightning: the sky takes the most, the far city a
+            # little, the foreground almost nothing
+            y = np.arange(ctx.H, dtype=np.float32)
+            y0f, y1f = cfg.get("lightning_fade", [cfg["sky_bottom"], cfg["sky_bottom"] * 2.2])
+            fall = 1 - 0.97 * smoothstep(ctx.px(y0f), ctx.px(y1f), y)
             self.amb_map = (fall[:, None] * ctx.free)[..., None] * self.flash_col
 
     def apply(self, f, t):
