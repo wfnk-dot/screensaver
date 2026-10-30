@@ -1,0 +1,19 @@
+effects:
+  clouds:
+    lightning: [[4.0, 0.8, 3.5], [4.9, 0.5, 2.5], [5.6, 0.3, 1.5],
+                [16.5, 0.9, 4.0], [17.6, 0.4, 2.0],
+                [25.0, 0.6, 3.0], [25.8, 0.35, 1.8]]
+    lightning_ambient: 0.35
+  city_wave:
+    regions: [{rect: [0, 228, 2000, 500]}, {rect: [0, 600, 2000, 760]}]
+    size: 4
+    width: 260
+    waves: 2
+    boost: 2.0
+    bloom: 0.7
+    direction: right
+  haze:
+    top: 440
+    bottom: 640
+    strength: 0.4
+    direction: right

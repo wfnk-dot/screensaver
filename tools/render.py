@@ -256,6 +256,11 @@ class Clouds:
         self.flashes = cfg.get("lightning", [])     # [[time, seconds, strength]]
         self.soft = lambda img, s=ctx.px(4): blur(img, s)
         self.flash_col = np.array(cfg.get("lightning_color", [0.75, 0.5, 1.0]), np.float32)
+        # how much each strike lights the whole scene, sky to ground
+        self.ambient = cfg.get("lightning_ambient", 0.0)
+        if self.ambient:
+            fall = 1 - 0.6 * smoothstep(0, ctx.H, np.arange(ctx.H, dtype=np.float32))
+            self.amb_map = (fall[:, None] * ctx.free)[..., None] * self.flash_col
 
     def apply(self, f, t):
         s = self.sign * self.dist * t / self.T
@@ -272,6 +277,8 @@ class Clouds:
                 e = k * (math.sin(math.pi * dt / dur) ** 0.5) * (0.55 + 0.45 * math.cos(TAU * 2.5 * dt / dur))
                 lit = np.clip(self.soft(moved), 0, None).sum(-1, keepdims=True) * 3 + 0.08
                 f[:self.rows] += e * lit * self.flash_col * self.m
+                if self.ambient:
+                    f += e * self.ambient * self.amb_map * (0.35 + f)
 
 
 class MoonGlow:
@@ -806,12 +813,86 @@ class Skyline:
                 stamp(f, self.spr, x, y, self.bcol * e * self.beacons.get("strength", 1.2))
 
 
+class CityWave:
+    """A slow wave of light sweeps across the city: only the lights already
+    in the photo get brighter as it passes, so nothing looks painted on."""
+
+    def __init__(self, ctx, cfg):
+        region = ctx.regions(cfg["regions"]) * ctx.free
+        opened = cv2.morphologyEx(ctx.base, cv2.MORPH_OPEN, ellipse(ctx.px(cfg.get("size", 4))))
+        own = np.clip(ctx.base - opened, 0, None) * blur(region, ctx.px(4))[..., None]
+        self.bb = bbox(region, pad=int(ctx.px(10)))
+        y0, y1, x0, x1 = self.bb
+        self.own = own[y0:y1, x0:x1]
+        self.x = np.arange(x0, x1, dtype=np.float32)
+        self.W, self.T = ctx.W, ctx.T
+        self.width = ctx.px(cfg.get("width", 260))
+        self.waves = cfg.get("waves", 2)
+        self.boost = cfg.get("boost", 1.2)
+        self.bloom = cfg.get("bloom", 0.6)
+        self.br = ctx.px(cfg.get("bloom_radius", 4))
+        self.dir = 1 if cfg.get("direction", "right") == "right" else -1
+
+    def apply(self, f, t):
+        y0, y1, x0, x1 = self.bb
+        span = self.W + 4 * self.width
+        u = (self.waves * t / self.T) % 1.0
+        c = -2 * self.width + u * span
+        if self.dir < 0:
+            c = self.W - c
+        # each wave wraps around, so the crest is periodic over the loop
+        d = np.minimum(np.abs(self.x - c), span - np.abs(self.x - c))
+        g = np.exp(-(d / self.width) ** 2)[None, :, None]
+        add = self.own * g * self.boost
+        f[y0:y1, x0:x1] += add + blur(add, self.br) * self.bloom
+
+
+class Haze:
+    """Soft mist drifting low over the water and the city. Seamless: the
+    mist texture tiles left to right and slides one tile per loop."""
+
+    def __init__(self, ctx, cfg):
+        r = ctx.rng
+        top, bottom = ctx.px(cfg["top"]), ctx.px(cfg["bottom"])
+        self.y0, self.y1 = int(top), int(math.ceil(bottom))
+        h, W = self.y1 - self.y0, ctx.W
+        tex = np.zeros((h, W), np.float32)
+        for scale, amp in [(160, 1.0), (60, 0.5), (25, 0.25)]:
+            sx = ctx.px(scale)
+            n = r.random((h, W)).astype(np.float32)
+            pad = int(sx * 3)
+            n = np.pad(n, ((0, 0), (pad, pad)), mode="wrap")
+            n = cv2.GaussianBlur(n, (0, 0), sigmaX=sx, sigmaY=sx * 0.35)[:, pad:pad + W]
+            tex += amp * (n - n.mean()) / (n.std() + 1e-6)
+        tex = smoothstep(cfg.get("threshold", -0.2), 1.6, tex)
+        yy = np.linspace(0, 1, h, dtype=np.float32)[:, None]
+        tex *= np.clip(np.sin(np.pi * yy), 0, 1) ** 1.5   # thickest in the middle of the band
+        self.tex = tex
+        self.free = ctx.free[self.y0:self.y1]
+        self.col = np.array(cfg.get("color", [0.62, 0.45, 0.85]), np.float32)
+        self.s = cfg.get("strength", 0.35)
+        self.sign = 1 if cfg.get("direction", "right") == "right" else -1
+        self.x = np.arange(W, dtype=np.float64)
+        self.W, self.T = W, ctx.T
+
+    def apply(self, f, t):
+        s = -self.sign * self.W * t / self.T
+        u = (self.x + s) % self.W
+        i0 = np.floor(u).astype(np.int64)
+        fr = (u - i0).astype(np.float32)[None, :]
+        m = self.tex[:, i0] * (1 - fr) + self.tex[:, (i0 + 1) % self.W] * fr
+        a = (m * self.s * self.free)[..., None]
+        sub = f[self.y0:self.y1]
+        f[self.y0:self.y1] = 1 - (1 - sub) * (1 - a * self.col)
+
+
 # order matters: stars come off the sky before the clouds move, and the road
 # tracer is set up before the moon and towers that sync to it
 EFFECTS = [("stars", Stars), ("clouds", Clouds), ("traffic", Traffic), ("moon_glow", MoonGlow),
            ("window_lights", Lights), ("house_lights", Lights), ("bridge_neon", Neon),
            ("water", Water), ("sparkles", Sparkles), ("fireflies", Fireflies),
-           ("shooting_star", ShootingStar), ("rain", Rain), ("skyline", Skyline)]
+           ("shooting_star", ShootingStar), ("rain", Rain), ("skyline", Skyline),
+           ("city_wave", CityWave), ("haze", Haze)]
 
 
 def build(scene, size):
