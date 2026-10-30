@@ -1,0 +1,7 @@
+# Deeper shadows in the city and water, so the lights pop like the banner's
+# glows on its dark ground. Colours unchanged; only the darks go darker.
+grade:
+  from_y: 200        # sky above this line is untouched
+  feather: 60
+  shadows: 0.62      # the darkest parts drop to 62%
+  pivot: 0.45        # anything brighter than this stays as it is

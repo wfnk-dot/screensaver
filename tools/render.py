@@ -64,6 +64,16 @@ class Ctx:
         if self.W > src.shape[1] * 1.15:
             # upscaled: a light unsharp mask keeps the city lights crisp
             img = np.clip(img + 0.35 * (img - blur(img, 1.2 * self.k / 1.7)), 0, 1)
+        g = scene.get("grade")
+        if g:
+            # depth: darken the shadows below a line (city, water) so the
+            # lights stand out; colour is kept, highlights untouched
+            y = np.arange(self.H, dtype=np.float32)
+            ramp = smoothstep(g["from_y"] * self.k, (g["from_y"] + g.get("feather", 60)) * self.k, y)
+            L = luma(img)
+            fac = g["shadows"] + (1 - g["shadows"]) * smoothstep(0, g.get("pivot", 0.4), L)
+            fac = 1 - ramp[:, None] * (1 - fac)
+            img = img * fac[..., None]
         self.base = img
         self.luma = luma(img)
 
@@ -844,6 +854,13 @@ class CityWave:
         self.bloom = cfg.get("bloom", 0.6)
         self.br = ctx.px(cfg.get("bloom_radius", 4))
         self.dir = 1 if cfg.get("direction", "right") == "right" else -1
+        # dim mode: the wave shows the city as it is in the photo and the
+        # lights elsewhere sit a little dimmer, so nothing ever goes past
+        # the photo's own brightness (no pink, no white, no grain)
+        self.dim = cfg.get("dim")
+        if self.dim:
+            real = smoothstep(cfg.get("lit_lo", 0.04), cfg.get("lit_hi", 0.12), luma(self.own))
+            self.own = self.own * real[..., None]
 
     def apply(self, f, t):
         y0, y1, x0, x1 = self.bb
@@ -855,6 +872,9 @@ class CityWave:
         # each wave wraps around, so the crest is periodic over the loop
         d = np.minimum(np.abs(self.x - c), span - np.abs(self.x - c))
         g = np.exp(-(d / self.width) ** 2)[None, :, None]
+        if self.dim:
+            f[y0:y1, x0:x1] -= self.own * (self.dim * (1 - g))
+            return
         add = self.own * g * self.boost
         f[y0:y1, x0:x1] += add + blur(add, self.br) * self.bloom
 
