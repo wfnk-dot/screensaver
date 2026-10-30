@@ -1,0 +1,15 @@
+# Shooting stars, lightning without rain, and the twin road lights together.
+effects:
+  traffic:
+    all_paths: {heads: 2, tail: 200, strength: 2.8}
+  bridge_neon:
+    flash_on_tracer: 2.2
+  clouds:
+    lightning: [[17.0, 0.7, 0.9], [17.9, 0.4, 0.5]]
+  shooting_star:
+    events:
+      - [2.5, 0.15, 0.15, 18, 0.22, 0.9]
+      - [10.5, 0.70, 0.10, 160, 0.18, 0.8]
+      - [25.0, 0.40, 0.05, 25, 0.25, 1.0]
+    width: 1.8
+    strength: 1.8

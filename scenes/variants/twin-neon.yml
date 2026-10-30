@@ -1,0 +1,12 @@
+# Two road lights chasing each other, bigger tower flashes and more sparkle.
+effects:
+  traffic:
+    all_paths: {heads: 2, tail: 200, strength: 2.8}
+  bridge_neon:
+    flash_on_tracer: 2.2
+    bloom: 1.5
+  sparkles:
+    count: 24
+    max_flares: 3
+  fireflies:
+    count: 40

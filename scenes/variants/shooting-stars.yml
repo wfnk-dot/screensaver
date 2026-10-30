@@ -1,0 +1,10 @@
+# Adds shooting stars: [time s, start x, start y, angle°, length, seconds].
+# x is a share of the width, y a share of the sky's height, length a share of the width.
+effects:
+  shooting_star:
+    events:
+      - [2.5, 0.15, 0.15, 18, 0.22, 0.9]
+      - [12.8, 0.70, 0.10, 160, 0.18, 0.8]
+      - [22.0, 0.40, 0.05, 25, 0.25, 1.0]
+    width: 1.8
+    strength: 1.8

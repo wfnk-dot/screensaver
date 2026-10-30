@@ -76,6 +76,28 @@ class Ctx:
     def px(self, v):
         return v * self.k
 
+    def beat(self, t, at, period, attack=0.08, decay=0.6):
+        """A flash that peaks at `at` seconds and repeats every `period`:
+        a quick rise, then a fade. Periodic, so loops stay seamless."""
+        dt = (t - at + attack) % period
+        if dt < attack:
+            return smoothstep(0, attack, dt) if attack > 0 else 1.0
+        return math.exp(-(dt - attack) / decay)
+
+    def tracer_hit(self, ref_pt):
+        """When (seconds into each lap) the road tracer passes the road point
+        nearest to `ref_pt`, and how often it comes by. None if no tracer."""
+        tr = getattr(self, "tracer", None)
+        if tr is None:
+            return None
+        if ref_pt == "end":
+            s = tr["L"]
+        else:
+            d = np.hypot(*(tr["xy"] - self.pts(ref_pt)).T)
+            s = tr["ss"][int(np.argmin(d))]
+        period = self.T / (tr["cyc"] * tr["heads"])
+        return (s / tr["spacing"]) * self.T / tr["cyc"] % period, period
+
     def pts(self, pts):
         return (np.asarray(pts, np.float32) * self.k)
 
@@ -230,6 +252,10 @@ class Clouds:
         self.gain = cfg.get("contrast", 1.0)
         self.x = np.arange(W, dtype=np.float64)
         self.T = ctx.T
+        ctx.sky_bottom = bottom
+        self.flashes = cfg.get("lightning", [])     # [[time, seconds, strength]]
+        self.soft = lambda img, s=ctx.px(4): blur(img, s)
+        self.flash_col = np.array(cfg.get("lightning_color", [0.75, 0.5, 1.0]), np.float32)
 
     def apply(self, f, t):
         s = self.sign * self.dist * t / self.T
@@ -239,6 +265,13 @@ class Clouds:
         i1 = (i0 + 1) % self.P
         moved = self.tile[:, i0] * (1 - fr) + self.tile[:, i1] * fr
         f[:self.rows] += moved * self.gain - self.r0
+        for t0, dur, k in self.flashes:
+            dt = (t - t0) % self.T
+            if dt < dur:
+                # a double flicker lighting the clouds from inside
+                e = k * (math.sin(math.pi * dt / dur) ** 0.5) * (0.55 + 0.45 * math.cos(TAU * 2.5 * dt / dur))
+                lit = np.clip(self.soft(moved), 0, None).sum(-1, keepdims=True) * 3 + 0.08
+                f[:self.rows] += e * lit * self.flash_col * self.m
 
 
 class MoonGlow:
@@ -257,9 +290,20 @@ class MoonGlow:
         self.s = cfg.get("strength", 0.2)
         self.cyc = cfg.get("cycles", 2)
         self.T = ctx.T
+        self.ctx = ctx
+        # sync: the moon flares when the road light reaches the end of the road
+        self.sync = None
+        sy = cfg.get("sync")
+        if sy and ctx.tracer_hit("end"):
+            at, period = ctx.tracer_hit("end")
+            self.sync = (at + sy.get("delay", 0.2), period, sy.get("decay", 1.5), sy.get("rest", 0.3))
 
     def apply(self, f, t):
-        a = self.s * (0.5 - 0.5 * math.cos(TAU * self.cyc * t / self.T))
+        if self.sync:
+            at, period, decay, rest = self.sync
+            a = self.s * (rest + (1 - rest) * self.ctx.beat(t, at, period, 0.35, decay))
+        else:
+            a = self.s * (0.5 - 0.5 * math.cos(TAU * self.cyc * t / self.T))
         y0, y1, x0, x1 = self.bb
         sub = f[y0:y1, x0:x1]
         f[y0:y1, x0:x1] = 1 - (1 - sub) * (1 - a * self.glow[y0:y1, x0:x1])
@@ -324,9 +368,16 @@ class Neon:
             layer = own * m[..., None]
             bloom = blur(layer, ctx.px(cfg.get("bloom_radius", 6)))
             bb = bbox(blur(m, ctx.px(cfg.get("bloom_radius", 6)) * 2) > 0.002)
-            self.items.append(dict(layer=layer, bloom=bloom, bb=bb,
+            hit = None
+            if cfg.get("flash_on_tracer") and "lines" in it:
+                ctr = np.mean([pt for ln in it["lines"] for pt in ln], axis=0)
+                foot = [ctr[0], max(pt[1] for ln in it["lines"] for pt in ln)]
+                hit = ctx.tracer_hit(foot)
+            self.items.append(dict(layer=layer, bloom=bloom, bb=bb, hit=hit,
                                    phase=it.get("phase", 0.0),
                                    flickers=it.get("flickers", [])))
+        self.flash = cfg.get("flash_on_tracer", 0)
+        self.ctx = ctx
         self.pulse = cfg.get("pulse", 0.12)
         self.pulse_cycles = cfg.get("pulse_cycles", 2)
         self.bloom = cfg.get("bloom", 0.5)
@@ -339,6 +390,9 @@ class Neon:
             if dt < dur:
                 # a stuttery dip: a couple of quick off/on blinks
                 g *= 1 - depth * (0.6 + 0.4 * math.sin(TAU * dt / dur * 3) ** 2)
+        if it["hit"]:
+            at, period = it["hit"]
+            g += self.flash * self.ctx.beat(t, at, period, 0.05, 0.45)
         return g
 
     def apply(self, f, t):
@@ -359,6 +413,7 @@ class Traffic:
         self.T = ctx.T
         self.paths = []
         for p in cfg["paths"]:
+            p = dict(p, **cfg.get("all_paths", {}))
             pts = ctx.pts(p["points"])
             seg = np.diff(pts, axis=0)
             seglen = np.hypot(seg[:, 0], seg[:, 1])
@@ -387,9 +442,14 @@ class Traffic:
             if p.get("mode") == "tracer":
                 # one light runs the whole road, then a short pause, then again
                 spacing = L * (1 + p.get("gap", 0.25))
+                heads = p.get("heads", 1)
                 self.paths.append(dict(common, tracer=True, u=s / spacing, cyc=p.get("laps", 3),
+                                       heads=heads,
                                        tail=ctx.px(p.get("tail", 300)) / spacing,
                                        head=ctx.px(p.get("head", 20)) / spacing))
+                if not hasattr(ctx, "tracer"):
+                    ctx.tracer = dict(xy=xy, ss=ss, L=L, spacing=spacing,
+                                      cyc=p.get("laps", 3), heads=heads)
                 continue
             n = p.get("pulses", 6)
             spacing = L / n
@@ -411,10 +471,12 @@ class Traffic:
         buf = np.zeros((y1 - y0, x1 - x0, 3), np.float32)
         for p in self.paths:
             if p["tracer"]:
-                behind = (p["cyc"] * t / self.T - p["u"]) % 1.0
-                ahead = 1 - behind
-                pulse = np.where(behind < 0.5, np.exp(-behind / p["tail"]),
-                                 np.exp(-(ahead / p["head"]) ** 2))
+                pulse = 0
+                for h in range(p["heads"]):
+                    behind = (p["cyc"] * t / self.T + h / p["heads"] - p["u"]) % 1.0
+                    ahead = 1 - behind
+                    pulse = pulse + np.where(behind < 0.5, np.exp(-behind / p["tail"]),
+                                             np.exp(-(ahead / p["head"]) ** 2))
             else:
                 d = (p["u"] - p["cyc"] * t / self.T) % 1.0
                 d = np.minimum(d, 1 - d)
@@ -427,7 +489,8 @@ class Traffic:
 
 
 class Water:
-    """Reflections on the water shimmer with a gentle sideways ripple."""
+    """Reflections on the water sway and glitter. A handful of long, low
+    waves at odd angles add up to an irregular, natural-looking ripple."""
 
     def __init__(self, ctx, cfg):
         m = ctx.regions(cfg["regions"])
@@ -439,32 +502,32 @@ class Water:
         self.m = m[y0:y1, x0:x1]
         yy, xx = np.mgrid[y0:y1, x0:x1].astype(np.float32)
         self.xx, self.yy = xx, yy
-        self.amp = ctx.px(cfg.get("amplitude", 1.5))
-        self.lam = ctx.px(cfg.get("wavelength", 7))
-        self.cyc = cfg.get("cycles", 12)
+        r = ctx.rng
+        n = cfg.get("waves", 6)
+        lo, hi = cfg.get("wavelength", [6, 14])          # across the ripples (vertical)
+        self.waves = []
+        for i in range(n):
+            ly = ctx.px(r.uniform(lo, hi))
+            lx = ctx.px(r.uniform(150, 600)) * r.choice([-1, 1])
+            spatial = (TAU * (yy / ly + xx / lx) + r.uniform(0, TAU)).astype(np.float32)
+            self.waves.append((spatial, int(r.integers(*cfg.get("cycles", [8, 16])))))
+        self.amp = ctx.px(cfg.get("amplitude", 2.0)) / math.sqrt(n)
         self.glint = cfg.get("glint", 0.0)
-        self.glint_lam = ctx.px(cfg.get("glint_wavelength", 40))
-        band = max(1, int(round(ctx.px(2))))
-        ph_rows = ctx.rng.random((y1 - y0) // band + 1).astype(np.float32) * TAU
-        self.row_ph = np.repeat(ph_rows, band)[:y1 - y0][:, None]
         self.T = ctx.T
-        self.ctx = ctx
 
     def apply(self, f, t):
         y0, y1, x0, x1 = self.bb
-        ph = TAU * self.cyc * t / self.T
-        dx = self.amp * (np.sin(TAU * self.yy / self.lam - ph) * 0.7
-                         + 0.3 * np.sin(TAU * (self.yy / (self.lam * 2.3) + self.xx / (self.lam * 31)) + ph))
+        dx = 0
+        for spatial, c in self.waves:
+            dx = dx + np.sin(spatial - TAU * c * t / self.T)
         src = f[y0:y1, x0:x1].copy()
-        mx = (self.xx - x0 + dx * self.m).astype(np.float32)
+        mx = (self.xx - x0 + self.amp * dx * self.m).astype(np.float32)
         my = (self.yy - y0).astype(np.float32)
         rip = cv2.remap(src, mx, my, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
         if self.glint:
-            # bands of light running across the reflections
-            # glitter: short streaks, each row of water on its own phase
-            g = np.sin(TAU * self.xx / self.glint_lam + self.row_ph - ph)
-            g = np.maximum(g, 0) ** 3 - 0.25
-            lit = smoothstep(0.15, 0.5, luma(src))[..., None]
+            # crests catch the light
+            g = np.clip(dx / 2.2, -1, 1)
+            lit = smoothstep(0.3, 0.7, luma(src))[..., None]   # only the reflections
             rip = rip * (1 + self.glint * g[..., None] * lit)
         f[y0:y1, x0:x1] = src + (rip - src) * self.m[..., None]
 
@@ -565,11 +628,78 @@ class Fireflies:
             stamp(f, spr, x, y, c * self.s * bb)
 
 
-# order matters: stars come off the sky before the clouds move
-EFFECTS = [("stars", Stars), ("clouds", Clouds), ("moon_glow", MoonGlow),
+class ShootingStar:
+    """A shooting star streaks across the sky. Positions are fractions of the
+    width and of the sky's height, so one setting fits every screen shape."""
+
+    def __init__(self, ctx, cfg):
+        self.W, self.T = ctx.W, ctx.T
+        self.sky = getattr(ctx, "sky_bottom", ctx.H * 0.3)
+        self.events = cfg["events"]            # [time, x, y, angle°, length, seconds]
+        self.width = ctx.px(cfg.get("width", 1.6))
+        self.col = np.array(cfg.get("color", [0.95, 0.88, 1.0]), np.float32)
+        self.s = cfg.get("strength", 1.5)
+        self.H = ctx.H
+
+    def apply(self, f, t):
+        for t0, fx, fy, ang, ln, dur in self.events:
+            dt = (t - t0) % self.T
+            if dt >= dur:
+                continue
+            u = dt / dur
+            a = math.radians(ang)
+            L = ln * self.W
+            x0, y0 = fx * self.W, fy * self.sky
+            hx, hy = x0 + math.cos(a) * L * u, y0 + math.sin(a) * L * u
+            tail = L * 0.45 * min(1, u * 3)
+            fade = math.sin(math.pi * u) ** 0.6
+            buf = np.zeros((self.H, self.W), np.uint8)
+            n = 12
+            for i in range(n):  # brighter towards the head
+                p0 = (hx - math.cos(a) * tail * i / n, hy - math.sin(a) * tail * i / n)
+                p1 = (hx - math.cos(a) * tail * (i + 1) / n, hy - math.sin(a) * tail * (i + 1) / n)
+                cv2.line(buf, (int(p0[0] * 4), int(p0[1] * 4)), (int(p1[0] * 4), int(p1[1] * 4)),
+                         int(255 * (1 - i / n) ** 1.5), max(1, int(round(self.width))), cv2.LINE_AA, 2)
+            layer = buf.astype(np.float32) / 255
+            layer = layer + blur(layer, self.width * 3) * 2
+            f += layer[..., None] * self.col * self.s * fade
+
+
+class Rain:
+    """Fine rain falling in front of the scene."""
+
+    def __init__(self, ctx, cfg):
+        r = ctx.rng
+        n = cfg.get("count", 300)
+        self.W, self.H, self.T = ctx.W, ctx.H, ctx.T
+        self.len = ctx.px(cfg.get("length", 30))
+        self.x = r.uniform(-0.2, 1.1, n) * ctx.W
+        self.ph = r.random(n)
+        lo, hi = cfg.get("passes", [8, 12])    # times each drop falls per loop
+        self.passes = r.integers(lo, hi + 1, n)
+        self.slant = math.tan(math.radians(cfg.get("angle", 12)))
+        self.op = r.uniform(0.4, 1.0, n) * cfg.get("opacity", 0.25)
+        self.col = np.array(cfg.get("color", [0.8, 0.75, 1.0]), np.float32)
+        self.w = max(1, int(round(ctx.px(cfg.get("width", 1)))))
+
+    def apply(self, f, t):
+        buf = np.zeros((self.H, self.W), np.uint8)
+        span = self.H + self.len
+        for x, ph, k, op in zip(self.x, self.ph, self.passes, self.op):
+            y = ((ph + k * t / self.T) % 1.0) * span - self.len
+            x1 = x + y * self.slant
+            x0, y0 = x1 - self.len * self.slant, y - self.len
+            cv2.line(buf, (int(x0 * 4), int(y0 * 4)), (int(x1 * 4), int(y * 4)),
+                     int(255 * op), self.w, cv2.LINE_AA, 2)
+        f += (buf.astype(np.float32) / 255)[..., None] * self.col
+
+
+# order matters: stars come off the sky before the clouds move, and the road
+# tracer is set up before the moon and towers that sync to it
+EFFECTS = [("stars", Stars), ("clouds", Clouds), ("traffic", Traffic), ("moon_glow", MoonGlow),
            ("window_lights", Lights), ("house_lights", Lights), ("bridge_neon", Neon),
-           ("traffic", Traffic), ("water", Water), ("sparkles", Sparkles),
-           ("fireflies", Fireflies)]
+           ("water", Water), ("sparkles", Sparkles), ("fireflies", Fireflies),
+           ("shooting_star", ShootingStar), ("rain", Rain)]
 
 
 def build(scene, size):
@@ -635,6 +765,8 @@ def save_masks(ctx, fx, outdir):
                "bridge_neon": (1, 0.1, 0.4), "traffic": (1, 1, 0), "water": (0.2, 0.4, 1),
                "sparkles": (1, 0.9, 1), "fireflies": (0.9, 0.5, 1)}
     for key, e in fx:
+        if key not in colours:
+            continue
         c = np.array(colours[key], np.float32)
         if isinstance(e, (Stars, Lights)):
             m = (e.labels > 0).astype(np.float32)
@@ -669,6 +801,17 @@ def save_masks(ctx, fx, outdir):
                 cv2.cvtColor((np.clip(over, 0, 1) * 255).astype(np.uint8), cv2.COLOR_RGB2BGR))
 
 
+def merge(dst, src):
+    """Layer a variant over a scene: nested settings merge, `null` removes."""
+    for k, v in src.items():
+        if v is None:
+            dst.pop(k, None)
+        elif isinstance(v, dict) and isinstance(dst.get(k), dict):
+            merge(dst[k], v)
+        else:
+            dst[k] = v
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("scene")
@@ -678,11 +821,16 @@ def main():
     g.add_argument("--masks", action="store_true", help="write effect masks to masks/<scene>/")
     g.add_argument("--still", type=float, metavar="SECONDS", help="one frame as PNG")
     ap.add_argument("--seconds", type=float, help="preview length (default: whole loop)")
+    ap.add_argument("--variant", help="a scenes/variants/*.yml file layered on top of the scene")
     a = ap.parse_args()
 
     with open(a.scene) as fh:
         scene = yaml.safe_load(fh)
     stem = os.path.splitext(os.path.basename(a.scene))[0]
+    if a.variant:
+        with open(a.variant) as fh:
+            merge(scene, yaml.safe_load(fh) or {})
+        stem += "__" + os.path.splitext(os.path.basename(a.variant))[0]
     rw, rh = scene["ref_size"]
 
     if a.final:

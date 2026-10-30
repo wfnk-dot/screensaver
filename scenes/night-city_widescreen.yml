@@ -40,9 +40,12 @@ effects:
   moon_glow:
     center: [999, 113]
     radius: 17
-    glow_radius: 130
-    strength: 0.55
-    cycles: 2
+    glow_radius: 170
+    strength: 0.85
+    sync:                # flares as the road light reaches the end of the road
+      delay: 0.15
+      decay: 1.6
+      rest: 0.25         # glow between flares, as a share of the peak
 
   window_lights:         # office towers on the skyline
     regions: [{rect: [0, 228, 2000, 395]}]
@@ -68,6 +71,7 @@ effects:
 
   bridge_neon:
     min_luma: 0.22
+    flash_on_tracer: 1.4 # each tower flashes as the road light passes it
     pulse: 0.35
     pulse_cycles: 3
     bloom: 1.1
@@ -95,9 +99,9 @@ effects:
                  [1450, 377], [1550, 366], [1610, 360]]
         width: 14
         mode: tracer
-        laps: 3          # runs the road 3 times per loop (every 10s)
+        laps: 5          # runs the road 5 times per loop (every 6s)
         gap: 0.25        # short pause before it starts again
-        tail: 420        # length of the glowing tail
+        tail: 260        # length of the glowing tail
         head: 18
         strength: 2.4
 
@@ -107,11 +111,11 @@ effects:
       - {poly: [[1070, 545], [2000, 541], [2000, 600], [1250, 600], [1100, 606], [1070, 596]]}
     exclude:
       - {poly: [[0, 650], [400, 598], [800, 533], [930, 506], [930, 528], [800, 553], [400, 618], [0, 670]]}
-    amplitude: 3.0
-    wavelength: 7
-    cycles: 15
-    glint: 0.6
-    glint_wavelength: 22
+    amplitude: 2.6
+    waves: 6
+    wavelength: [6, 14]  # ripple spacing, varied per wave
+    cycles: [8, 16]      # how many times each wave rolls by per loop
+    glint: 0.4
 
   sparkles:              # stars flaring into four-point sparkles, as on the banner
     regions: [{rect: [0, 0, 2000, 225]}]
