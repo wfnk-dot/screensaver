@@ -1,0 +1,4 @@
+# Road light in violet, matching the sky.
+effects:
+  traffic:
+    neon_color: [0.72, 0.32, 1.0]

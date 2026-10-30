@@ -296,12 +296,14 @@ class MoonGlow:
         sy = cfg.get("sync")
         if sy and ctx.tracer_hit("end"):
             at, period = ctx.tracer_hit("end")
-            self.sync = (at + sy.get("delay", 0.2), period, sy.get("decay", 1.5), sy.get("rest", 0.3))
+            self.sync = (at + sy.get("delay", 0.2), period, sy.get("rest", 0.3), sy.get("sharpness", 1.5))
 
     def apply(self, f, t):
         if self.sync:
-            at, period, decay, rest = self.sync
-            a = self.s * (rest + (1 - rest) * self.ctx.beat(t, at, period, 0.35, decay))
+            # a slow swell that peaks just after the road light arrives
+            at, period, rest, sharp = self.sync
+            w = (0.5 + 0.5 * math.cos(TAU * (t - at) / period)) ** sharp
+            a = self.s * (rest + (1 - rest) * w)
         else:
             a = self.s * (0.5 - 0.5 * math.cos(TAU * self.cyc * t / self.T))
         y0, y1, x0, x1 = self.bb
@@ -392,7 +394,7 @@ class Neon:
                 g *= 1 - depth * (0.6 + 0.4 * math.sin(TAU * dt / dur * 3) ** 2)
         if it["hit"]:
             at, period = it["hit"]
-            g += self.flash * self.ctx.beat(t, at, period, 0.05, 0.45)
+            g += self.flash * self.ctx.beat(t, at, period, 0.12, 0.7)
         return g
 
     def apply(self, f, t):
@@ -437,7 +439,17 @@ class Traffic:
             ys, xs = np.nonzero(m > 0.01)
             _, idx = cKDTree(xy).query(np.stack([xs, ys], 1).astype(np.float32))
             s = ss[idx].astype(np.float32)
-            common = dict(ys=ys, xs=xs, rgb=ctx.base[ys, xs] * m[ys, xs][:, None],
+            rgb = ctx.base[ys, xs]
+            nc = p.get("neon_color", cfg.get("neon_color"))
+            if nc == "road":
+                # the road's own hue at full saturation: neon, not white
+                sat = rgb - rgb.min(1, keepdims=True) * 0.85
+                neon = sat / np.maximum(sat.max(1, keepdims=True), 1e-3)
+            elif nc is not None:
+                neon = np.broadcast_to(np.array(nc, np.float32), rgb.shape)
+            else:
+                neon = None
+            common = dict(ys=ys, xs=xs, rgb=rgb * m[ys, xs][:, None], m=m[ys, xs], neon=neon,
                           strength=p.get("strength", 0.6))
             if p.get("mode") == "tracer":
                 # one light runs the whole road, then a short pause, then again
@@ -469,6 +481,7 @@ class Traffic:
     def apply(self, f, t):
         y0, y1, x0, x1 = self.bb
         buf = np.zeros((y1 - y0, x1 - x0, 3), np.float32)
+        cover = np.zeros((y1 - y0, x1 - x0, 1), np.float32)
         for p in self.paths:
             if p["tracer"]:
                 pulse = 0
@@ -481,10 +494,17 @@ class Traffic:
                 d = (p["u"] - p["cyc"] * t / self.T) % 1.0
                 d = np.minimum(d, 1 - d)
                 pulse = np.exp(-(d / p["w"]) ** 2)
-            buf[p["ys"] - y0, p["xs"] - x0] += p["rgb"] * (p["strength"] * pulse)[:, None]
-        f[y0:y1, x0:x1] += buf
+            if p["neon"] is not None:
+                # the lit stretch of road takes on the neon colour
+                a = np.clip(pulse * p["strength"], 0, 0.95) * p["m"]
+                cover[p["ys"] - y0, p["xs"] - x0, 0] = np.maximum(cover[p["ys"] - y0, p["xs"] - x0, 0], a)
+                buf[p["ys"] - y0, p["xs"] - x0] += p["neon"] * a[:, None]
+            else:
+                buf[p["ys"] - y0, p["xs"] - x0] += p["rgb"] * (p["strength"] * pulse)[:, None]
+        sub = f[y0:y1, x0:x1]
+        f[y0:y1, x0:x1] = sub * (1 - cover) + buf
         if self.glow:
-            # headlight glow spilling around each pulse
+            # the neon's glow spilling onto the city around it
             f[y0:y1, x0:x1] += blur(buf, self.glow_r) * self.glow
 
 

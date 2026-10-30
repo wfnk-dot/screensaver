@@ -37,6 +37,7 @@ effects:
     direction: left
     scrolls_per_loop: 1  # clouds travel the full screen width once per loop
     contrast: 1.35       # clouds a little punchier than the still
+    lightning: [[5.0, 0.7, 1.0], [5.9, 0.4, 0.6], [19.5, 0.8, 1.1]]   # [time, seconds, strength]
     hold:
       - {center: [999, 190], radius: 34}   # the moon and its halo stay put
 
@@ -44,11 +45,11 @@ effects:
     center: [999, 190]
     radius: 17
     glow_radius: 170
-    strength: 0.85
-    sync:                # flares as the road light reaches the end of the road
-      delay: 0.15
-      decay: 1.6
-      rest: 0.25         # glow between flares, as a share of the peak
+    strength: 0.5
+    sync:                # swells gently as the road light reaches the end of the road
+      delay: 0.6
+      rest: 0.35         # glow between swells, as a share of the peak
+      sharpness: 1.5
 
   window_lights:         # office towers on the skyline
     regions: [{rect: [0, 492, 2000, 659]}]
@@ -74,7 +75,7 @@ effects:
 
   bridge_neon:
     min_luma: 0.22
-    flash_on_tracer: 1.4 # each tower flashes as the road light passes it
+    flash_on_tracer: 1.0 # each tower flashes as the road light passes it
     pulse: 0.35
     pulse_cycles: 3
     bloom: 1.1
@@ -93,20 +94,23 @@ effects:
 
   traffic:
     min_luma: 0.32
-    glow: 1.6
-    glow_radius: 7
+    neon_color: road     # the road's own orange at full neon saturation
+    glow: 1.1
+    glow_radius: 8
     paths:
       - name: bridge and highway, one neon tracer
-        points: [[0, 923], [200, 912], [400, 872], [600, 852], [800, 807], [900, 781],
-                 [1100, 743], [1200, 732], [1285, 725], [1300, 686], [1350, 652],
-                 [1450, 641], [1550, 630], [1610, 624]]
-        width: 14
+        points: [[0, 923], [100, 916], [200, 910], [300, 892], [400, 872], [500, 862], [600, 850],
+                 [700, 830], [800, 807], [900, 780], [1000, 761], [1100, 743], [1200, 733], [1250, 729],
+                 [1280, 726], [1300, 722], [1311, 714], [1308, 704], [1303, 692], [1298, 679], [1295, 670],
+                 [1298, 663], [1308, 659], [1322, 657], [1342, 654], [1370, 650], [1400, 647], [1450, 641],
+                 [1500, 635], [1550, 630], [1600, 624], [1640, 619]]
+        width: 9
         mode: tracer
-        laps: 5          # runs the road 5 times per loop (every 6s)
+        laps: 4          # runs the road 4 times per loop (every 7.5s)
         gap: 0.25        # short pause before it starts again
         tail: 260        # length of the glowing tail
         head: 18
-        strength: 2.4
+        strength: 1.6    # how strongly the road takes the neon colour
 
   water:
     regions:

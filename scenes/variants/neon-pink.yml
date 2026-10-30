@@ -1,0 +1,4 @@
+# Road light in hot pink, like the glow on the Discord banner's text boxes.
+effects:
+  traffic:
+    neon_color: [1.0, 0.22, 0.62]

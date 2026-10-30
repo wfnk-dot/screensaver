@@ -36,8 +36,11 @@
   `house_lights` (both use the Lights effect: `mode: fade` or `twinkle`),
   `bridge_neon` (any neon structure, traced with `lines`), `traffic` (pulses
   along a road `points` path; `mode: tracer` is one neon light running the
-  road, which the moon and towers can sync to), `water`, `sparkles`,
-  `fireflies`, `shooting_star` and `rain`; `clouds` also takes `lightning`.
-  Send Wyn several variants (`scenes/variants/`) rather than one. Add a new effect class in
+  road, recoloured to a saturated `neon_color` so it never washes to white;
+  the moon and towers can sync to it), `water`, `sparkles`, `fireflies`,
+  `shooting_star` and `rain`; `clouds` also takes `lightning`. Send Wyn
+  several variants (`scenes/variants/`) rather than one. Wyn's taste so far:
+  vivid over subtle, colours that belong to the image, no white flashes,
+  no rain or shooting stars. Add a new effect class in
   `tools/render.py` and list it in `EFFECTS` when an image needs something new.
 - Needs: `pip install opencv-python-headless numpy scipy pyyaml`, and ffmpeg with libx265.
