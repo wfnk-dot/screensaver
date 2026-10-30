@@ -48,6 +48,7 @@ effects:
       rest: 0.45         # glow between swells, as a share of the peak
       sharpness: 1.5
 
+  # skyline glow, beacons and water ripple are off: they looked painted on
   window_lights:         # office towers on the skyline (off: too small to place well)
     enabled: false
     regions: [{rect: [0, 228, 2000, 395]}]
@@ -92,8 +93,8 @@ effects:
 
   traffic:
     min_luma: 0.32
-    neon_color: road     # the road's own orange at full neon saturation
-    glow: 1.2
+    neon_color: lift     # brighten the road's own light; keeps its colour and texture
+    glow: 0.8
     glow_radius: 6
     paths:
       - name: bridge and highway, one neon tracer
@@ -132,9 +133,10 @@ effects:
         gap: 0.25        # short pause before it starts again
         tail: 260        # length of the glowing tail
         head: 18
-        strength: 1.6    # how strongly the road takes the neon colour
+        strength: 0.9    # how much brighter the road gets as the light passes
 
   water:
+    enabled: false
     regions:
       - {poly: [[0, 509], [775, 509], [775, 538], [600, 560], [0, 560]]}   # stops short of the left tower
       - {poly: [[1070, 545], [2000, 541], [2000, 600], [1250, 600], [1100, 606], [1070, 596]]}
@@ -147,6 +149,7 @@ effects:
     glint: 0.4
 
   skyline:               # depth on the horizon; brighten-only
+    enabled: false
     min_luma: 0.35
     boost: 0.6
     bloom: 0.7

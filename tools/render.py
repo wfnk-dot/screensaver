@@ -466,7 +466,9 @@ class Traffic:
             s = ss[idx].astype(np.float32)
             rgb = ctx.base[ys, xs]
             nc = p.get("neon_color", cfg.get("neon_color"))
-            if nc == "road":
+            if nc == "lift":
+                neon = "lift"
+            elif nc == "road":
                 # the road's own hue at full saturation: neon, not white
                 sat = rgb - rgb.min(1, keepdims=True) * 0.85
                 neon = sat / np.maximum(sat.max(1, keepdims=True), 1e-3)
@@ -474,7 +476,7 @@ class Traffic:
                 neon = np.broadcast_to(np.array(nc, np.float32), rgb.shape)
             else:
                 neon = None
-            common = dict(ys=ys, xs=xs, rgb=rgb * m[ys, xs][:, None], m=m[ys, xs], neon=neon,
+            common = dict(ys=ys, xs=xs, rgb=rgb * m[ys, xs][:, None], m=m[ys, xs], neon=neon, base=rgb,
                           strength=p.get("strength", 0.6))
             if p.get("mode") == "tracer":
                 # one light runs the whole road, then a short pause, then again
@@ -513,6 +515,7 @@ class Traffic:
         y0, y1, x0, x1 = self.bb
         buf = np.zeros((y1 - y0, x1 - x0, 3), np.float32)
         cover = np.zeros((y1 - y0, x1 - x0, 1), np.float32)
+        spill = np.zeros_like(buf)
         for p in self.paths:
             if p["tracer"]:
                 pulse = 0
@@ -525,7 +528,16 @@ class Traffic:
                 d = (p["u"] - p["cyc"] * t / self.T) % 1.0
                 d = np.minimum(d, 1 - d)
                 pulse = np.exp(-(d / p["w"]) ** 2)
-            if p["neon"] is not None:
+            if isinstance(p["neon"], str):
+                # "lift": the road's own light gets brighter, keeping its
+                # colour and texture; whatever can't fit spills into a glow
+                g = 1 + p["strength"] * pulse * p["m"]
+                room = 1 / np.maximum(p["base"].max(1), 1e-3)
+                ge = np.minimum(g, room)
+                yy, xx = p["ys"] - y0, p["xs"] - x0
+                buf[yy, xx] += p["base"] * (ge - 1)[:, None]
+                spill[yy, xx] += p["base"] * (p.get("spill", 0.3) * ((g - ge) + 0.5 * pulse * p["m"]))[:, None]
+            elif p["neon"] is not None:
                 # the lit stretch of road takes on the neon colour
                 a = np.clip(pulse * p["strength"], 0, 0.95) * p["m"]
                 cover[p["ys"] - y0, p["xs"] - x0, 0] = np.maximum(cover[p["ys"] - y0, p["xs"] - x0, 0], a)
@@ -537,7 +549,9 @@ class Traffic:
             # the unlit road sits a little darker, like an unlit tube
             sub = sub * (1 - self.rest_dim * self.road_m)
         f[y0:y1, x0:x1] = sub * (1 - cover) + buf
-        if self.glow:
+        if spill.any():
+            f[y0:y1, x0:x1] += blur(spill, self.glow_r) * self.glow
+        elif self.glow:
             # the neon's glow spilling onto the city around it
             f[y0:y1, x0:x1] += blur(buf, self.glow_r) * self.glow
 
@@ -819,10 +833,11 @@ def frame(ctx, fx, t):
 
 # ---------------------------------------------------------------- output
 
-def encode(ctx, fx, path, seconds, final):
+def encode(ctx, fx, path, seconds, final, crop=None):
     n = int(round(seconds * ctx.fps))
+    cx, cy, cw, ch = crop or (0, 0, ctx.W, ctx.H)
     cmd = ["ffmpeg", "-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "rgb48le",
-           "-s", f"{ctx.W}x{ctx.H}", "-r", str(ctx.fps), "-i", "-",
+           "-s", f"{cw}x{ch}", "-r", str(ctx.fps), "-i", "-",
            "-vf", "scale=out_color_matrix=bt709:out_range=tv",
            "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
            "-movflags", "+faststart"]
@@ -837,7 +852,7 @@ def encode(ctx, fx, path, seconds, final):
     p = subprocess.Popen(cmd, stdin=subprocess.PIPE)
     rng = np.random.default_rng(0)
     for i in range(n):
-        f = frame(ctx, fx, (i / ctx.fps) % ctx.T)
+        f = frame(ctx, fx, (i / ctx.fps) % ctx.T)[cy:cy + ch, cx:cx + cw]
         # tiny dither so the smooth sky doesn't band
         f = f * 65535 + rng.uniform(-96, 96, f.shape).astype(np.float32)
         p.stdin.write(np.clip(f, 0, 65535).astype("<u2").tobytes())
@@ -920,6 +935,8 @@ def main():
     g.add_argument("--still", type=float, metavar="SECONDS", help="one frame as PNG")
     ap.add_argument("--seconds", type=float, help="preview length (default: whole loop)")
     ap.add_argument("--variant", help="a scenes/variants/*.yml file layered on top of the scene")
+    ap.add_argument("--closeup", metavar="X,Y,W,H",
+                    help="with --preview: a 1:1 crop of the first screen at its real size")
     a = ap.parse_args()
 
     with open(a.scene) as fh:
@@ -940,6 +957,15 @@ def main():
             path = os.path.join(ROOT, "loops", f"{scene['name']}_{out['screen']}.mp4")
             print(f"{path}: {size[0]}x{size[1]}, seam error {seam:.2e}")
             encode(ctx, fx, path, ctx.T, final=True)
+        return
+
+    if a.closeup and a.preview:
+        ctx, fx = build(scene, tuple(scene["outputs"][0]["size"]))
+        crop = tuple(int(v) for v in a.closeup.split(","))
+        os.makedirs(os.path.join(ROOT, "previews"), exist_ok=True)
+        path = os.path.join(ROOT, "previews", f"{stem}_closeup.mp4")
+        print(path)
+        encode(ctx, fx, path, a.seconds or ctx.T, final=False, crop=crop)
         return
 
     pw = scene.get("preview_width", 1280)

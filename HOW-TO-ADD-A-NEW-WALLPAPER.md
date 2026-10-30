@@ -27,7 +27,8 @@
   `ref_size` grid and get scaled to any render size.
 - `python3 tools/render.py <scene> --masks` writes `masks/<scene>/`, including
   `_overview.jpg` (red = protected). Look at it after placing regions.
-- `--still <seconds>` writes one frame. `--preview` writes a 1280-px H.264
+- `--still <seconds>` writes one frame. `--preview --closeup X,Y,W,H` writes a
+  1:1 crop at the screen's real size, which is how detail must be judged. `--preview` writes a 1280-px H.264
   loop to `previews/`. `--final` writes a native-resolution HEVC Main10 loop per
   output to `loops/` (30 fps, `hvc1` tag so macOS plays it).
 - Every effect uses whole cycles per `loop_seconds`, so the loop is seamless;
@@ -44,6 +45,8 @@
   no rain or shooting stars. Masks must sit exactly on what they animate:
   trace roads at full resolution (`fill: true` lights the road's whole lit
   width) and check `masks/` at full size; if something is too small to place
-  precisely (e.g. single windows), leave it out rather than guess. Add a new effect class in
+  precisely (e.g. single windows), leave it out rather than guess. Never
+  repaint real pixels with a flat colour (it looks like a bad filter):
+  brighten the photo's own light instead (`neon_color: lift`). Add a new effect class in
   `tools/render.py` and list it in `EFFECTS` when an image needs something new.
 - Needs: `pip install opencv-python-headless numpy scipy pyyaml`, and ffmpeg with libx265.
