@@ -1,0 +1,118 @@
+# Night city, widescreen edit (moon moved lower and closer).
+# Coordinates are pixels on a 2000 x 837 copy of the image (ref_size);
+# the renderer scales them to the real image and to each screen.
+
+name: night-city
+source: sources/night-city_widescreen.png
+ref_size: [2000, 837]
+loop_seconds: 24
+fps: 30
+preview_width: 1280
+seed: 7
+
+outputs:
+  - screen: widescreen
+    size: [3440, 1440]
+
+# Never animated: the figure and the dark hill she stands on.
+protect:
+  - {rect: [912, 292, 1140, 775], max_luma: 0.24}
+  - {rect: [0, 730, 2000, 837], max_luma: 0.2}
+
+effects:
+  stars:
+    regions: [{rect: [0, 0, 2000, 225]}]
+    size: 2
+    threshold: 0.045
+    max_area: 6
+    cycles: [1, 3]
+    depth: 0.8
+
+  clouds:
+    full_until: 150      # fully drifting above this line...
+    sky_bottom: 222      # ...fading to still at the skyline
+    drift: 26            # px of travel per crossfade
+    direction: left
+    crossfades_per_loop: 2
+    hold:
+      - {center: [999, 113], radius: 19}   # the moon stays put
+
+  moon_glow:
+    center: [999, 113]
+    radius: 17
+    glow_radius: 85
+    strength: 0.22
+    cycles: 2
+
+  window_lights:         # office towers on the skyline
+    regions: [{rect: [0, 228, 2000, 395]}]
+    mode: fade
+    size: 3
+    threshold: 0.07
+    max_area: 30
+    fraction: 0.18
+    cycles: [1, 2]
+    off_fraction: [0.12, 0.3]
+    depth: 0.85
+
+  house_lights:          # foreground houses below the water
+    regions: [{rect: [0, 600, 2000, 790]}]
+    mode: twinkle
+    size: 3
+    threshold: 0.08
+    max_area: 20
+    fraction: 0.22
+    cycles: [1, 4]
+    depth: 0.6
+
+  bridge_neon:
+    min_luma: 0.22
+    pulse: 0.12
+    pulse_cycles: 2
+    bloom: 0.45
+    bloom_radius: 7
+    items:
+      - lines: [[[800, 398], [800, 542]], [[839, 398], [839, 542]],
+                [[796, 404], [843, 404]], [[798, 472], [841, 472]]]
+        width: 6                          # left tower
+        phase: 0.0
+        flickers: [[7.4, 0.35, 0.7], [19.1, 0.2, 0.5]]
+      - lines: [[[1177, 364], [1177, 528]], [[1205, 364], [1205, 528]],
+                [[1174, 369], [1208, 369]], [[1175, 420], [1207, 420]]]
+        width: 6                          # right tower
+        phase: 0.35
+        flickers: [[13.2, 0.4, 0.7]]
+
+  traffic:
+    min_luma: 0.32
+    paths:
+      - name: bridge and highway, outbound
+        points: [[0, 659], [200, 648], [400, 608], [600, 590], [800, 543], [900, 516],
+                 [1100, 479], [1200, 468], [1285, 460], [1300, 422], [1350, 388],
+                 [1450, 377], [1550, 366], [1610, 360]]
+        width: 14
+        pulses: 7
+        speed: 70
+        pulse_length: 28
+        strength: 0.55
+        direction: forward
+      - name: bridge and highway, inbound
+        points: [[0, 659], [200, 648], [400, 608], [600, 590], [800, 543], [900, 516],
+                 [1100, 479], [1200, 468], [1285, 460], [1300, 422], [1350, 388],
+                 [1450, 377], [1550, 366], [1610, 360]]
+        width: 14
+        pulses: 5
+        speed: 55
+        pulse_length: 22
+        strength: 0.4
+        direction: backward
+
+  water:
+    regions:
+      - {poly: [[0, 503], [915, 506], [800, 534], [600, 560], [0, 560]]}
+      - {poly: [[1070, 545], [2000, 541], [2000, 600], [1250, 600], [1100, 606], [1070, 596]]}
+    exclude:
+      - {poly: [[0, 650], [400, 598], [800, 533], [930, 506], [930, 528], [800, 553], [400, 618], [0, 670]]}
+    amplitude: 1.4
+    wavelength: 6
+    cycles: 12

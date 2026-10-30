@@ -1,0 +1,40 @@
+# How to add a new wallpaper
+
+1. Upload the wallpaper images to this repo on github.com
+   (**Add file → Upload files**, drag them in, **Commit changes**).
+   Upload one edited version per screen shape.
+2. Start a new Claude Code session on the web with the `wfnk-dot/screensaver`
+   repo selected, and send this message (fill in the blanks):
+
+   > Read `HOW-TO-ADD-A-NEW-WALLPAPER.md` and `tools/render.py` in this repo.
+   > Add a new wallpaper called **____**.
+   > I uploaded: **____** (widescreen, 3440 × 1440) and **____** (27" 2560 × 1440 and Arzopa 1920 × 1080).
+   > Follow the same process as night-city: move the files into `sources/`,
+   > send me a numbered list of proposed effects for each image, wait for my
+   > ticks, then build `scenes/<name>_<shape>.yml`, send me the previews, and
+   > only after I approve render the final loops into `loops/` and push.
+
+3. Tick, edit or add to the list of effects Claude sends back.
+4. Watch the previews and say what to change.
+5. When you approve, the final loops land in the `loops/` folder, named
+   `<wallpaper>_<screen>.mp4`. Drop them in the screensaver's videos folder.
+
+## For Claude: how the pipeline works
+
+- `scenes/<name>_<shape>.yml` describes one edited image: its source file, the
+  screens it's rendered for (`outputs`), the areas never animated (`protect`)
+  and each effect with its hand-placed regions. Coordinates are pixels on the
+  `ref_size` grid and get scaled to any render size.
+- `python3 tools/render.py <scene> --masks` writes `masks/<scene>/`, including
+  `_overview.jpg` (red = protected). Look at it after placing regions.
+- `--still <seconds>` writes one frame. `--preview` writes a 1280-px H.264
+  loop to `previews/`. `--final` writes a native-resolution HEVC Main10 loop per
+  output to `loops/` (30 fps, `hvc1` tag so macOS plays it).
+- Every effect uses whole cycles per `loop_seconds`, so the loop is seamless;
+  the renderer prints the seam error (it should be ~1e-5).
+- Effects available: `stars`, `clouds`, `moon_glow`, `window_lights`,
+  `house_lights` (both use the Lights effect: `mode: fade` or `twinkle`),
+  `bridge_neon` (any neon structure, traced with `lines`), `traffic` (pulses
+  along a road `points` path) and `water`. Add a new effect class in
+  `tools/render.py` and list it in `EFFECTS` when an image needs something new.
+- Needs: `pip install opencv-python-headless numpy scipy pyyaml`, and ffmpeg with libx265.
