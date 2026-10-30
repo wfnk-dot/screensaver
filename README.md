@@ -18,8 +18,7 @@ Adding another wallpaper: see [HOW-TO-ADD-A-NEW-WALLPAPER.md](HOW-TO-ADD-A-NEW-W
 ## Timing
 
 Every loop is 30 seconds and every effect runs on the same clock, so the
-road light, the moon flare and the tower flashes line up on all three
-screens. For Part 2: start each screen's player at
+road light and the moon swell line up on all three screens. For Part 2: start each screen's player at
 `(current time) mod 30s` so the screens stay in step with each other.
 
 ## Trying variations
