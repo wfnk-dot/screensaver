@@ -34,11 +34,6 @@ effects:
     direction: left
     scrolls_per_loop: 1  # clouds travel the full screen width once per loop
     contrast: 1.35       # clouds a little punchier than the still
-    wisps:               # bright brushed cloud streaks drifting in two layers, like the banner's sky
-      - {top: 5, bottom: 135, length: 150, thickness: 7, threshold: 0.3, softness: 1.8,
-         speed: 1, strength: 0.7, color: [0.95, 0.8, 1.0]}
-      - {top: 55, bottom: 205, length: 110, thickness: 6, threshold: 0.6, softness: 1.8,
-         speed: 2, strength: 0.55, color: [1.0, 0.72, 0.92]}
     lightning: [[5.0, 0.7, 2.2], [5.9, 0.45, 1.5], [19.5, 0.8, 2.4], [20.4, 0.35, 1.4]]   # [time, seconds, strength]
     hold:
       - {center: [999, 113], radius: 34}   # the moon and its halo stay put
