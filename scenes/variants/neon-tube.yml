@@ -1,0 +1,5 @@
+# Orange neon, but the road sits a little darker when the light isn't on it,
+# so the moving light stands out more.
+effects:
+  traffic:
+    rest_dim: 0.35

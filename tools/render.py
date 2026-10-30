@@ -434,7 +434,23 @@ class Traffic:
             band = np.zeros((ctx.H, ctx.W), np.uint8)
             cv2.polylines(band, [np.round(pts).astype(np.int32)], False, 1,
                           thickness=max(1, int(round(ctx.px(p.get("width", 14))))))
-            road = smoothstep(cfg.get("min_luma", 0.3), cfg.get("min_luma", 0.3) + 0.25, ctx.luma)
+            lo = cfg.get("min_luma", 0.3)
+            road = smoothstep(lo, lo + 0.25, ctx.luma)
+            if p.get("fill"):
+                # the whole lit road: pixels clearly brighter than the city
+                # around it, joined to the line, so wide stretches fill edge
+                # to edge and nothing off the road lights up
+                fl = p.get("fill_luma", 0.48)
+                lit = ((ctx.luma > fl) & (band > 0)).astype(np.uint8)
+                n, lab = cv2.connectedComponents(lit, connectivity=8)
+                spine = np.zeros_like(lit)
+                cv2.polylines(spine, [np.round(pts).astype(np.int32)], False, 1,
+                              thickness=max(1, int(round(ctx.px(4)))))
+                on = np.unique(lab[(spine > 0) & (lit > 0)])
+                keep = np.isin(lab, on[on > 0]).astype(np.float32)
+                # feather into the road's slightly dimmer edges
+                near = cv2.dilate(keep, ellipse(ctx.px(1.5)))
+                road = np.maximum(keep, near * smoothstep(fl - 0.12, fl, ctx.luma)) * band
             m = band * road * ctx.free
             ys, xs = np.nonzero(m > 0.01)
             _, idx = cKDTree(xy).query(np.stack([xs, ys], 1).astype(np.float32))
@@ -477,6 +493,12 @@ class Traffic:
         xs = np.concatenate([p["xs"] for p in self.paths])
         self.bb = (max(0, ys.min() - pad), min(ctx.H, ys.max() + pad + 1),
                    max(0, xs.min() - pad), min(ctx.W, xs.max() + pad + 1))
+        self.rest_dim = cfg.get("rest_dim", 0.0)
+        y0, y1, x0, x1 = self.bb
+        self.road_m = np.zeros((y1 - y0, x1 - x0, 1), np.float32)
+        for p in self.paths:
+            self.road_m[p["ys"] - y0, p["xs"] - x0, 0] = np.maximum(
+                self.road_m[p["ys"] - y0, p["xs"] - x0, 0], p["m"])
 
     def apply(self, f, t):
         y0, y1, x0, x1 = self.bb
@@ -502,6 +524,9 @@ class Traffic:
             else:
                 buf[p["ys"] - y0, p["xs"] - x0] += p["rgb"] * (p["strength"] * pulse)[:, None]
         sub = f[y0:y1, x0:x1]
+        if self.rest_dim:
+            # the unlit road sits a little darker, like an unlit tube
+            sub = sub * (1 - self.rest_dim * self.road_m)
         f[y0:y1, x0:x1] = sub * (1 - cover) + buf
         if self.glow:
             # the neon's glow spilling onto the city around it

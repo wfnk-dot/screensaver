@@ -25,4 +25,4 @@ screens. For Part 2: start each screen's player at
 ## Trying variations
 
 `scenes/variants/*.yml` are extras layered on top of a scene, e.g.
-`python3 tools/render.py scenes/night-city_widescreen.yml --variant scenes/variants/neon-pink.yml --preview`.
+`python3 tools/render.py scenes/night-city_widescreen.yml --variant scenes/variants/neon-tube.yml --preview`.

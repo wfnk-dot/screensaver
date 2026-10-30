@@ -41,6 +41,9 @@
   `shooting_star` and `rain`; `clouds` also takes `lightning`. Send Wyn
   several variants (`scenes/variants/`) rather than one. Wyn's taste so far:
   vivid over subtle, colours that belong to the image, no white flashes,
-  no rain or shooting stars. Add a new effect class in
+  no rain or shooting stars. Masks must sit exactly on what they animate:
+  trace roads at full resolution (`fill: true` lights the road's whole lit
+  width) and check `masks/` at full size; if something is too small to place
+  precisely (e.g. single windows), leave it out rather than guess. Add a new effect class in
   `tools/render.py` and list it in `EFFECTS` when an image needs something new.
 - Needs: `pip install opencv-python-headless numpy scipy pyyaml`, and ffmpeg with libx265.
