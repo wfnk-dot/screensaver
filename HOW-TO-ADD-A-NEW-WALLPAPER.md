@@ -47,6 +47,10 @@
   width) and check `masks/` at full size; if something is too small to place
   precisely (e.g. single windows), leave it out rather than guess. Never
   repaint real pixels with a flat colour (it looks like a bad filter):
-  brighten the photo's own light instead (`neon_color: lift`). Add a new effect class in
+  brighten the photo's own light instead (`neon_color: lift`).
+- Style reference: `references/discord-banner.mp4`. What it does: clouds move
+  only where they cover nothing; small soft particles in the image's own two
+  colours fade in and out in the empty corners; a short light travels along
+  outlines; everything else is still. Nothing flashes, nothing turns white. Add a new effect class in
   `tools/render.py` and list it in `EFFECTS` when an image needs something new.
 - Needs: `pip install opencv-python-headless numpy scipy pyyaml`, and ffmpeg with libx265.

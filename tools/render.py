@@ -683,10 +683,17 @@ class Fireflies:
     """Soft glowing specks floating in the air, like the banner's."""
 
     def __init__(self, ctx, cfg):
-        x0, y0, x1, y1 = [v * ctx.k for v in cfg["area"]]
-        n = cfg.get("count", 20)
         r = ctx.rng
-        self.base = np.stack([r.uniform(x0, x1, n), r.uniform(y0, y1, n)], 1)
+        # one area, or several {rect, count} areas so the specks sit in the
+        # empty parts of the picture rather than over what's already lit
+        areas = cfg.get("areas") or [{"rect": cfg["area"], "count": cfg.get("count", 20)}]
+        pts = []
+        for a in areas:
+            x0, y0, x1, y1 = [v * ctx.k for v in a["rect"]]
+            c = a["count"]
+            pts.append(np.stack([r.uniform(x0, x1, c), r.uniform(y0, y1, c)], 1))
+        self.base = np.concatenate(pts)
+        n = len(self.base)
         self.amp = np.stack([r.uniform(0.5, 1, n), r.uniform(0.5, 1, n)], 1) * ctx.px(cfg.get("wander", 40))
         self.k = r.integers(1, 3, (n, 2))
         self.ph = r.random((n, 2))
@@ -697,12 +704,13 @@ class Fireflies:
         cols = np.array(cfg.get("colors", [[0.8, 0.55, 1.0], [1.0, 0.6, 0.9]]), np.float32)
         self.col = cols[r.integers(0, len(cols), n)]
         self.s = cfg.get("strength", 0.8)
+        self.lo = cfg.get("min_glow", 0.25)   # 0: each speck fades fully out between glows
         self.T = ctx.T
 
     def apply(self, f, t):
         u = t / self.T
         pos = self.base + self.amp * np.sin(TAU * (self.k * u + self.ph))
-        b = 0.25 + 0.75 * (0.5 - 0.5 * np.cos(TAU * (self.bk * u + self.bph))) ** 2
+        b = self.lo + (1 - self.lo) * (0.5 - 0.5 * np.cos(TAU * (self.bk * u + self.bph))) ** 2
         for (x, y), spr, c, bb in zip(pos, self.spr, self.col, b):
             stamp(f, spr, x, y, c * self.s * bb)
 

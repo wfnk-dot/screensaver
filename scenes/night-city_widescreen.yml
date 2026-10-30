@@ -177,9 +177,14 @@ effects:
     flare_seconds: 1.8
     strength: 1.0
 
-  fireflies:             # soft glowing specks drifting over the city
-    area: [0, 540, 2000, 760]
-    count: 22
-    size: [4, 8]
-    wander: 70
-    strength: 1.3
+  fireflies:             # soft specks in the empty, dark parts, like the banner's
+    areas:
+      - {rect: [20, 525, 520, 600], count: 7}     # open water, left
+      - {rect: [20, 680, 640, 770], count: 10}    # dark hills, bottom left
+      - {rect: [1330, 560, 1980, 600], count: 3}  # open water, right
+      - {rect: [1250, 720, 1980, 790], count: 5}  # dark hills, bottom right
+    size: [4, 7]
+    wander: 45
+    colors: [[0.78, 0.6, 1.0], [1.0, 0.62, 0.32]]   # lavender and amber: the image's own two colours
+    min_glow: 0               # fade fully in and out, like the banner's
+    strength: 0.9
