@@ -351,8 +351,9 @@ class Neon:
 
 
 class Traffic:
-    """Pulses of light travel along the lit roads, like traffic. Only the
-    road's own light gets brighter, so the colours stay the edit's own."""
+    """Light travels along the lit roads: either one neon tracer running the
+    whole road (mode: tracer), or many traffic-like pulses. Only the road's
+    own light gets brighter, so the colours stay the edit's own."""
 
     def __init__(self, ctx, cfg):
         self.T = ctx.T
@@ -381,14 +382,22 @@ class Traffic:
             ys, xs = np.nonzero(m > 0.01)
             _, idx = cKDTree(xy).query(np.stack([xs, ys], 1).astype(np.float32))
             s = ss[idx].astype(np.float32)
+            common = dict(ys=ys, xs=xs, rgb=ctx.base[ys, xs] * m[ys, xs][:, None],
+                          strength=p.get("strength", 0.6))
+            if p.get("mode") == "tracer":
+                # one light runs the whole road, then a short pause, then again
+                spacing = L * (1 + p.get("gap", 0.25))
+                self.paths.append(dict(common, tracer=True, u=s / spacing, cyc=p.get("laps", 3),
+                                       tail=ctx.px(p.get("tail", 300)) / spacing,
+                                       head=ctx.px(p.get("head", 20)) / spacing))
+                continue
             n = p.get("pulses", 6)
             spacing = L / n
             speed = ctx.px(p.get("speed", 60))  # px per second
             cyc = max(1, round(speed * self.T / spacing))  # whole spacings per loop
             self.paths.append(dict(
-                ys=ys, xs=xs, u=s / spacing, w=ctx.px(p.get("pulse_length", 30)) / spacing,
-                cyc=cyc * (1 if p.get("direction", "forward") == "forward" else -1),
-                rgb=ctx.base[ys, xs] * m[ys, xs][:, None], strength=p.get("strength", 0.6)))
+                common, tracer=False, u=s / spacing, w=ctx.px(p.get("pulse_length", 30)) / spacing,
+                cyc=cyc * (1 if p.get("direction", "forward") == "forward" else -1)))
         self.glow = cfg.get("glow", 0.0)
         self.glow_r = ctx.px(cfg.get("glow_radius", 5))
         pad = int(self.glow_r * 3) + 1
@@ -401,9 +410,15 @@ class Traffic:
         y0, y1, x0, x1 = self.bb
         buf = np.zeros((y1 - y0, x1 - x0, 3), np.float32)
         for p in self.paths:
-            d = (p["u"] - p["cyc"] * t / self.T) % 1.0
-            d = np.minimum(d, 1 - d)
-            pulse = np.exp(-(d / p["w"]) ** 2)
+            if p["tracer"]:
+                behind = (p["cyc"] * t / self.T - p["u"]) % 1.0
+                ahead = 1 - behind
+                pulse = np.where(behind < 0.5, np.exp(-behind / p["tail"]),
+                                 np.exp(-(ahead / p["head"]) ** 2))
+            else:
+                d = (p["u"] - p["cyc"] * t / self.T) % 1.0
+                d = np.minimum(d, 1 - d)
+                pulse = np.exp(-(d / p["w"]) ** 2)
             buf[p["ys"] - y0, p["xs"] - x0] += p["rgb"] * (p["strength"] * pulse)[:, None]
         f[y0:y1, x0:x1] += buf
         if self.glow:

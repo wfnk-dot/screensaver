@@ -89,29 +89,20 @@ effects:
 
   traffic:
     min_luma: 0.32
-    glow: 1.2
-    glow_radius: 6
+    glow: 1.6
+    glow_radius: 7
     paths:
-      - name: bridge and highway, outbound
+      - name: bridge and highway, one neon tracer
         points: [[0, 923], [200, 912], [400, 872], [600, 852], [800, 807], [900, 781],
                  [1100, 743], [1200, 732], [1285, 725], [1300, 686], [1350, 652],
                  [1450, 641], [1550, 630], [1610, 624]]
         width: 14
-        pulses: 10
-        speed: 110
-        pulse_length: 40
-        strength: 1.6
-        direction: forward
-      - name: bridge and highway, inbound
-        points: [[0, 923], [200, 912], [400, 872], [600, 852], [800, 807], [900, 781],
-                 [1100, 743], [1200, 732], [1285, 725], [1300, 686], [1350, 652],
-                 [1450, 641], [1550, 630], [1610, 624]]
-        width: 14
-        pulses: 8
-        speed: 90
-        pulse_length: 32
-        strength: 1.2
-        direction: backward
+        mode: tracer
+        laps: 3          # runs the road 3 times per loop (every 10s)
+        gap: 0.25        # short pause before it starts again
+        tail: 420        # length of the glowing tail
+        head: 18
+        strength: 2.4
 
   water:
     regions:
