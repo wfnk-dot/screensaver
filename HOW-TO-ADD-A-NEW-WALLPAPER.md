@@ -51,6 +51,10 @@
 - Style reference: `references/discord-banner.mp4`. What it does: clouds move
   only where they cover nothing; small soft particles in the image's own two
   colours fade in and out in the empty corners; a short light travels along
-  outlines; everything else is still. Nothing flashes, nothing turns white. Add a new effect class in
+  outlines; everything else is still. Nothing flashes, nothing turns white.
+- Visible from across the room: every moving part must be bold, and the rest
+  still. Measure it: each part's brightness swing seen from a distance should
+  match the banner's (clouds ~0.32, main light ~0.36, particles ~0.21).
+  A faint change spread over a big area is invisible; don't use it. Add a new effect class in
   `tools/render.py` and list it in `EFFECTS` when an image needs something new.
 - Needs: `pip install opencv-python-headless numpy scipy pyyaml`, and ffmpeg with libx265.

@@ -263,6 +263,34 @@ class Clouds:
         self.x = np.arange(W, dtype=np.float64)
         self.T = ctx.T
         ctx.sky_bottom = bottom
+        # wisps: soft bright cloud streaks in a few layers drifting at
+        # different speeds, like the banner's sky; each layer tiles left to
+        # right and slides a whole number of widths per loop
+        self.wisps = []
+        for i, wl in enumerate(cfg.get("wisps", [])):
+            r = np.random.default_rng(100 + i)
+            y0w, y1w = int(ctx.px(wl["top"])), int(ctx.px(wl["bottom"]))
+            h = y1w - y0w
+            sx, sy = ctx.px(wl.get("length", 140)), ctx.px(wl.get("thickness", 7))
+
+            def streaks(lx, ly):
+                n = r.random((h, W)).astype(np.float32)
+                pad = int(lx * 3)
+                n = np.pad(n, ((0, 0), (pad, pad)), mode="wrap")
+                n = cv2.GaussianBlur(n, (0, 0), sigmaX=lx, sigmaY=ly)[:, pad:pad + W]
+                return (n - n.mean()) / (n.std() + 1e-6)
+
+            # long soft streaks, with finer brushed streaks inside them
+            n = streaks(sx, sy) + 0.5 * streaks(sx * 0.35, sy * 0.45) + 0.3 * streaks(sx * 0.12, sy * 0.25)
+            n /= 1.2
+            th = wl.get("threshold", 0.6)
+            a = smoothstep(th, th + wl.get("softness", 1.8), n)
+            yy = np.linspace(0, 1, h, dtype=np.float32)[:, None]
+            a *= np.clip(np.sin(np.pi * yy), 0, 1) ** 0.8   # soft top and bottom
+            self.wisps.append(dict(a=a, y0=y0w, y1=y1w, k=wl.get("speed", 1),
+                                   col=np.array(wl.get("color", [0.95, 0.8, 1.0]), np.float32),
+                                   s=wl.get("strength", 0.6),
+                                   free=ctx.free[y0w:y1w]))
         self.flashes = cfg.get("lightning", [])     # [[time, seconds, strength]]
         self.soft = lambda img, s=ctx.px(4): blur(img, s)
         self.flash_col = np.array(cfg.get("lightning_color", [0.75, 0.5, 1.0]), np.float32)
@@ -284,6 +312,14 @@ class Clouds:
         i1 = (i0 + 1) % self.P
         moved = self.tile[:, i0] * (1 - fr) + self.tile[:, i1] * fr
         f[:self.rows] += moved * self.gain - self.r0
+        for wl in self.wisps:
+            u = (self.x + self.sign * wl["k"] * len(self.x) * t / self.T) % len(self.x)
+            i0 = np.floor(u).astype(np.int64)
+            fr = (u - i0).astype(np.float32)[None, :]
+            a = wl["a"][:, i0] * (1 - fr) + wl["a"][:, (i0 + 1) % len(self.x)] * fr
+            a = (a * wl["s"] * wl["free"])[..., None]
+            sub = f[wl["y0"]:wl["y1"]]
+            f[wl["y0"]:wl["y1"]] = 1 - (1 - sub) * (1 - a * wl["col"])
         for t0, dur, k in self.flashes:
             dt = (t - t0) % self.T
             if dt < dur:
@@ -520,12 +556,18 @@ class Traffic:
                 cyc=cyc * (1 if p.get("direction", "forward") == "forward" else -1)))
         self.glow = cfg.get("glow", 0.0)
         self.glow_r = ctx.px(cfg.get("glow_radius", 5))
-        pad = int(self.glow_r * 3) + 1
+        pad = int(max(self.glow_r, ctx.px((cfg.get("halo") or {}).get("radius", 0))) * 3) + 1
         ys = np.concatenate([p["ys"] for p in self.paths])
         xs = np.concatenate([p["xs"] for p in self.paths])
         self.bb = (max(0, ys.min() - pad), min(ctx.H, ys.max() + pad + 1),
                    max(0, xs.min() - pad), min(ctx.W, xs.max() + pad + 1))
         self.rest_dim = cfg.get("rest_dim", 0.0)
+        hc = cfg.get("halo")
+        self.halo = bool(hc)
+        if hc:
+            self.halo_col = np.array(hc.get("color", [1.0, 0.45, 0.15]), np.float32)
+            self.halo_s = hc.get("strength", 1.0)
+            self.halo_r = ctx.px(hc.get("radius", 8))
         y0, y1, x0, x1 = self.bb
         self.road_m = np.zeros((y1 - y0, x1 - x0, 1), np.float32)
         for p in self.paths:
@@ -537,6 +579,7 @@ class Traffic:
         buf = np.zeros((y1 - y0, x1 - x0, 3), np.float32)
         cover = np.zeros((y1 - y0, x1 - x0, 1), np.float32)
         spill = np.zeros_like(buf)
+        halo_src = np.zeros((y1 - y0, x1 - x0), np.float32)
         for p in self.paths:
             if p["tracer"]:
                 pulse = 0
@@ -557,6 +600,7 @@ class Traffic:
                 ge = np.minimum(g, room)
                 yy, xx = p["ys"] - y0, p["xs"] - x0
                 buf[yy, xx] += p["base"] * (ge - 1)[:, None]
+                halo_src[yy, xx] = np.maximum(halo_src[yy, xx], pulse * p["m"])
                 spill[yy, xx] += p["base"] * (p.get("spill", 0.3) * ((g - ge) + 0.5 * pulse * p["m"]))[:, None]
             elif p["neon"] is not None:
                 # the lit stretch of road takes on the neon colour
@@ -570,6 +614,11 @@ class Traffic:
             # the unlit road sits a little darker, like an unlit tube
             sub = sub * (1 - self.rest_dim * self.road_m)
         f[y0:y1, x0:x1] = sub * (1 - cover) + buf
+        if self.halo:
+            # a soft glow in one colour around the lit stretch, like the glow
+            # around the banner's outlines
+            h = blur(halo_src, self.halo_r)
+            f[y0:y1, x0:x1] += h[..., None] * self.halo_col * self.halo_s
         if spill.any():
             f[y0:y1, x0:x1] += blur(spill, self.glow_r) * self.glow
         elif self.glow:

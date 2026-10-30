@@ -34,6 +34,11 @@ effects:
     direction: left
     scrolls_per_loop: 1  # clouds travel the full screen width once per loop
     contrast: 1.35       # clouds a little punchier than the still
+    wisps:               # bright brushed cloud streaks drifting in two layers, like the banner's sky
+      - {top: 5, bottom: 135, length: 150, thickness: 7, threshold: 0.3, softness: 1.8,
+         speed: 1, strength: 0.7, color: [0.95, 0.8, 1.0]}
+      - {top: 55, bottom: 205, length: 110, thickness: 6, threshold: 0.6, softness: 1.8,
+         speed: 2, strength: 0.55, color: [1.0, 0.72, 0.92]}
     lightning: [[5.0, 0.7, 2.2], [5.9, 0.45, 1.5], [19.5, 0.8, 2.4], [20.4, 0.35, 1.4]]   # [time, seconds, strength]
     hold:
       - {center: [999, 113], radius: 34}   # the moon and its halo stay put
@@ -96,6 +101,10 @@ effects:
     neon_color: lift     # brighten the road's own light; keeps its colour and texture
     glow: 0.8
     glow_radius: 6
+    halo:                # a glow travelling with the light, like the glow round the banner's text boxes
+      color: [1.0, 0.45, 0.15]
+      strength: 3.0
+      radius: 14
     paths:
       - name: bridge and highway, one neon tracer
         # traced along the road's brightest line at full resolution
@@ -177,22 +186,14 @@ effects:
     flare_seconds: 1.8
     strength: 1.0
 
-  city_wave:             # a wave of light rolls through the city, twice a loop
-    regions: [{rect: [0, 250, 2000, 780]}]
-    feather: 30
-    width: 300
-    waves: 2
-    gain: 0.3            # up to 30% brighter under the band, capped per pixel
-    direction: right
-
   fireflies:             # soft specks in the empty, dark parts, like the banner's
     areas:
       - {rect: [20, 525, 520, 600], count: 4}     # open water, left
       - {rect: [20, 680, 640, 770], count: 6}     # dark hills, bottom left
       - {rect: [1330, 560, 1980, 600], count: 2}  # open water, right
       - {rect: [1250, 720, 1980, 790], count: 3}  # dark hills, bottom right
-    size: [4, 7]
-    wander: 45
+    size: [6, 9]
+    wander: 65
     colors: [[0.78, 0.6, 1.0], [1.0, 0.62, 0.32]]   # lavender and amber: the image's own two colours
     min_glow: 0               # fade fully in and out, like the banner's
-    strength: 0.9
+    strength: 1.1
