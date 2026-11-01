@@ -41,3 +41,11 @@ Default mapping for the screensaver:
 
 The MacBook is ignored (it's used through Universal Control). All loops are
 30 s; start each screen at `(current time) mod 30 s` so they stay in step.
+
+### Installing
+
+Double-click **Install Screensaver.command**. It builds the screensaver
+(`screensaver-app/`), copies it and every loop in `loops/` into
+`~/Library/Screen Savers/`, and opens Screen Saver settings. Pick
+**Screensaver** under **Other**; **Options…** sets the loop for each screen.
+Run it again after adding new loops.
