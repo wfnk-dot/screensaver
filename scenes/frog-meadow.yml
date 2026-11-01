@@ -1,0 +1,85 @@
+# Frog meadow: the purple "Fuck bitches / Get Money." scene, as one master
+# that every version is cut from (new tab, screens, Discord and Notion banners).
+#
+# Source: sources/frog-meadow.png is the clean background (no text, no frog),
+# built from the purple still (middle) and the widened new-tab video (sides),
+# with the old text removed. The frog is redrawn as a separate sharp layer
+# (sources/frog-meadow_frog.png, traced from the original green picture).
+# The text boxes are drawn fresh by the renderer, so they're sharp at any size
+# and the text can be changed (see scenes/variants/frog-meadow_*.yml).
+#
+# Coordinates are pixels on the 3104 x 1299 master (ref_size).
+
+name: frog-meadow
+source: sources/frog-meadow.png
+ref_size: [3104, 1299]
+loop_seconds: 8
+fps: 30
+preview_width: 1552
+seed: 11
+
+outputs:
+  # Brave new tab page (H.264 plays in every browser)
+  - {screen: newtab-ultrawide, size: [3440, 1440], crop: [0, 0, 3104, 1299], codec: h264}
+  - {screen: newtab-16x9, size: [2560, 1440], crop: [237, 0, 2546, 1299], codec: h264}
+  # Mac screensaver screens (HEVC, like the other loops)
+  - {screen: widescreen, size: [3440, 1440], crop: [0, 0, 3104, 1299]}
+  - {screen: 27in, size: [2560, 1440], crop: [237, 0, 2546, 1299]}
+  - {screen: arzopa, size: [1920, 1080], crop: [237, 0, 2546, 1299]}
+  # Discord profile banner / Notion cover: the same picture, cropped round the frog
+  - {screen: banner, size: [960, 340], crop: [470, 300, 2670, 1079], codec: gif, fps: 15}
+  - {screen: banner-hd, size: [1920, 680], crop: [470, 300, 2670, 1079], codec: h264}
+
+effects:
+  stars:
+    regions: [{rect: [0, 0, 3104, 330]}]
+    size: 3
+    threshold: 0.04
+    max_area: 12
+    cycles: [1, 3]
+    range: [0.2, 2.2]
+
+  sparkles:              # a few stars flare into four-point sparkles, as on the banner
+    regions: [{rect: [0, 0, 3104, 330]}]
+    count: 10
+    size: 22
+    max_flares: 2
+    flare_seconds: 1.6
+    strength: 1.0
+
+  fireflies:             # soft specks in the dark meadow and hills, lavender and amber
+    areas:
+      - {rect: [40, 560, 1050, 1250], count: 9}
+      - {rect: [1600, 1000, 3060, 1260], count: 7}
+      - {rect: [2300, 620, 3060, 1000], count: 4}
+      - {rect: [1050, 1050, 1600, 1270], count: 2}
+    size: [7, 11]
+    wander: 70
+    colors: [[0.78, 0.6, 1.0], [1.0, 0.62, 0.32]]
+    min_glow: 0
+    strength: 1.1
+
+  overlay:               # the redrawn frog, on top of the meadow
+    image: sources/frog-meadow_frog.png
+    pixels_per_ref: 2
+    at: [1159, 714]
+
+  neon_boxes:
+    font: fonts/Marcellus-Regular.ttf
+    text_size: 84
+    padding: 46
+    min_width: 530
+    height: 136
+    radius: 32
+    text: [1.0, 0.84, 1.0]
+    text_glow: [1.0, 0.42, 0.95]
+    line_width: 4.4
+    line_strength: 1.4
+    glow_radius: 17
+    text_glow_strength: 1.5
+    lights: 2            # two lights chase round each box, opposite each other
+    laps: 1              # once round per loop; every box in step
+    tail: 0.16
+    boxes:
+      - {text: "Fuck bitches", center: [840, 744]}
+      - {text: "Get Money.", center: [1916, 910]}

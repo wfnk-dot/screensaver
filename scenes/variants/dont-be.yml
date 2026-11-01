@@ -1,0 +1,11 @@
+# Notion "Trades" page banner: same frog-meadow picture, different words.
+# Render: python3 tools/render.py scenes/frog-meadow.yml --variant scenes/variants/dont-be.yml --final
+# (makes loops/frog-meadow__dont-be_banner.gif and _banner-hd.mp4)
+outputs:
+  - {screen: banner, size: [960, 340], crop: [470, 300, 2670, 1079], codec: gif, fps: 15}
+  - {screen: banner-hd, size: [1920, 680], crop: [470, 300, 2670, 1079], codec: h264}
+effects:
+  neon_boxes:
+    boxes:
+      - {text: "Don't be", center: [840, 744]}
+      - {text: "a cunt.", center: [1916, 910]}

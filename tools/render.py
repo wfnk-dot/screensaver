@@ -958,13 +958,189 @@ class Haze:
         f[self.y0:self.y1] = 1 - (1 - sub) * (1 - a * self.col)
 
 
+class Overlay:
+    """A hand-made picture layered on top of the scene (e.g. a redrawn
+    character), from an RGBA file drawn at `pixels_per_ref` pixels per ref
+    pixel, with its top-left corner at `at` (ref pixels)."""
+
+    def __init__(self, ctx, cfg):
+        img = cv2.imread(os.path.join(ROOT, cfg["image"]), cv2.IMREAD_UNCHANGED)
+        if img is None or img.shape[2] != 4:
+            sys.exit(f"overlay {cfg['image']} must be an RGBA PNG")
+        img = cv2.cvtColor(img, cv2.COLOR_BGRA2RGBA).astype(np.float32) / 255
+        s = ctx.k / cfg.get("pixels_per_ref", 1)
+        x, y = ctx.pts(cfg["at"])
+        h, w = img.shape[:2]
+        x0, y0 = int(math.floor(x)), int(math.floor(y))
+        W, H = int(math.ceil(w * s)) + 2, int(math.ceil(h * s)) + 2
+        # premultiply, then resample with the sub-pixel offset in one go
+        pre = np.dstack([img[..., :3] * img[..., 3:], img[..., 3]])
+        M = np.float32([[s, 0, x - x0], [0, s, y - y0]])
+        interp = cv2.INTER_AREA if s < 1 else cv2.INTER_CUBIC
+        if s < 1:
+            pre = cv2.resize(pre, (max(1, round(w * s)), max(1, round(h * s))), interpolation=cv2.INTER_AREA)
+            M = np.float32([[w * s / pre.shape[1], 0, x - x0], [0, h * s / pre.shape[0], y - y0]])
+        out = np.clip(cv2.warpAffine(pre, M, (W, H), flags=cv2.INTER_LINEAR if s < 1 else interp), 0, 1)
+        # clip to the frame
+        fx0, fy0 = max(0, x0), max(0, y0)
+        fx1, fy1 = min(ctx.W, x0 + W), min(ctx.H, y0 + H)
+        out = out[fy0 - y0:fy1 - y0, fx0 - x0:fx1 - x0]
+        self.sl = (slice(fy0, fy1), slice(fx0, fx1))
+        self.rgb = out[..., :3]
+        self.a = out[..., 3:]
+
+    def apply(self, f, t):
+        f[self.sl] = f[self.sl] * (1 - self.a) + self.rgb
+
+
+def _rounded_rect(w, h, r, ss=4):
+    """Filled rounded rectangle and its 1-px outline, anti-aliased by supersampling."""
+    from PIL import Image, ImageDraw
+    W, H = int(math.ceil(w)) * ss, int(math.ceil(h)) * ss
+    im = Image.new("L", (W, H), 0)
+    ImageDraw.Draw(im).rounded_rectangle([0, 0, w * ss - 1, h * ss - 1], radius=r * ss, fill=255)
+    a = np.asarray(im, np.float32) / 255
+    return cv2.resize(a, (W // ss, H // ss), interpolation=cv2.INTER_AREA)
+
+
+class NeonBoxes:
+    """Glowing neon text boxes like the Discord banner's: dark glass, a thin
+    bright outline with a purple glow, glowing text, and lights running round
+    the outline. Every box runs the same light at the same point of its
+    outline at the same moment, so the boxes are always in sync."""
+
+    def __init__(self, ctx, cfg):
+        from PIL import Image, ImageDraw, ImageFont
+        self.T = ctx.T
+        self.laps = cfg.get("laps", 1)
+        self.n_lights = cfg.get("lights", 2)
+        self.phase = cfg.get("phase", 0.0)
+        font_path = os.path.join(ROOT, cfg.get("font", "fonts/Marcellus-Regular.ttf"))
+        col = lambda key, d: np.array(cfg.get(key, d), np.float32)
+        fill_col, fill_a = col("fill", [0.07, 0.03, 0.17]), cfg.get("fill_opacity", 0.78)
+        line_col, glow_col = col("line", [1.0, 0.86, 1.0]), col("glow", [0.62, 0.3, 1.0])
+        text_col, text_glow = col("text", [1.0, 0.9, 1.0]), col("text_glow", [0.85, 0.45, 1.0])
+        self.light_col = col("light", [1.0, 0.96, 1.0])
+        self.light_glow = col("light_glow", [0.8, 0.5, 1.0])
+        k = ctx.k
+        self.boxes = []
+        for b in cfg["boxes"]:
+            g = {**cfg, **b}
+            th = g["text_size"] * k
+            font = ImageFont.truetype(font_path, max(4, int(round(th))))
+            l, t_, r_, b_ = font.getbbox(b["text"])
+            tw = r_ - l
+            bw = max(tw + 2 * g["padding"] * k, g.get("min_width", 0) * k)
+            bh = g["height"] * k
+            cx, cy = ctx.pts(b["center"])
+            rad = g["radius"] * k
+            m = int(math.ceil(g.get("glow_radius", 14) * k * 3.5))
+            # local canvas with room for the glow
+            x0, y0 = int(math.floor(cx - bw / 2)) - m, int(math.floor(cy - bh / 2)) - m
+            Wl, Hl = int(math.ceil(bw)) + 2 * m + 2, int(math.ceil(bh)) + 2 * m + 2
+            ox, oy = cx - bw / 2 - x0, cy - bh / 2 - y0          # box corner inside the canvas
+            fill = np.zeros((Hl, Wl), np.float32)
+            rr = _rounded_rect(bw, bh, rad)
+            iy, ix = int(round(oy)), int(round(ox))
+            fill[iy:iy + rr.shape[0], ix:ix + rr.shape[1]] = rr
+            lw = max(1.0, g.get("line_width", 1.6) * k)
+            line = np.clip(fill - cv2.erode(fill, ellipse(lw / 2)), 0, 1)
+            line = blur(line, 0.5)
+            # text, centred on the box (optically: on the x-height band)
+            tim = Image.new("L", (Wl * 2, Hl * 2), 0)
+            f2 = ImageFont.truetype(font_path, max(4, int(round(th * 2))))
+            ImageDraw.Draw(tim).text(((cx - x0) * 2 + g.get("text_dx", 0) * k * 2,
+                                      (cy - y0) * 2 + g.get("text_dy", 0) * k * 2),
+                                     b["text"], font=f2, fill=255, anchor="mm")
+            text = cv2.resize(np.asarray(tim, np.float32) / 255, (Wl, Hl), interpolation=cv2.INTER_AREA)
+            gr = g.get("glow_radius", 14) * k
+            ts = g.get("text_glow_strength", 1.0)
+            add = (line[..., None] * line_col * g.get("line_strength", 1.0)
+                   + blur(line, gr * 0.25)[..., None] * glow_col * 2.6
+                   + blur(line, gr)[..., None] * glow_col * 2.6
+                   + blur(line, gr * 2.5)[..., None] * glow_col * 1.8
+                   + blur(text, gr * 0.15)[..., None] * text_glow * 1.6 * ts
+                   + blur(text, gr * 0.5)[..., None] * text_glow * 0.9 * ts
+                   + blur(text, gr * 1.4)[..., None] * text_glow * 0.35 * ts
+                   + text[..., None] * text_col)
+            # the outline as a path, for the running lights
+            pts = self._outline(ox, oy, bw, bh, rad, step=max(0.5, k * 0.5))
+            L = len(pts)
+            marks = np.full((Hl, Wl), 255, np.uint8)
+            ip = np.clip(np.round(pts).astype(int), 0, [Wl - 1, Hl - 1])
+            marks[ip[:, 1], ip[:, 0]] = 0
+            dist, lab = cv2.distanceTransformWithLabels(marks, cv2.DIST_L2, 5, labelType=cv2.DIST_LABEL_PIXEL)
+            # label -> index along the outline
+            lab_to_i = np.zeros(lab.max() + 1, np.int64)
+            zeros_y, zeros_x = np.nonzero(marks == 0)
+            idx_img = np.full((Hl, Wl), -1, np.int64)
+            idx_img[ip[:, 1], ip[:, 0]] = np.arange(L)
+            lab_to_i[lab[zeros_y, zeros_x]] = idx_img[zeros_y, zeros_x]
+            pidx = lab_to_i[lab]
+            core = np.exp(-(dist / (lw * 0.9)) ** 2)
+            halo = np.exp(-(dist / (gr * 0.9)) ** 2)
+            fx0, fy0 = max(0, x0), max(0, y0)
+            fx1, fy1 = min(ctx.W, x0 + Wl), min(ctx.H, y0 + Hl)
+            if fx1 <= fx0 or fy1 <= fy0:
+                continue
+            c = (slice(fy0 - y0, fy1 - y0), slice(fx0 - x0, fx1 - x0))
+            self.boxes.append(dict(
+                sl=(slice(fy0, fy1), slice(fx0, fx1)),
+                dark=(fill[c] * fill_a)[..., None], fill=fill_col, add=add[c],
+                pidx=pidx[c], core=core[c][..., None], halo=halo[c][..., None], L=L,
+                tail=g.get("tail", 0.16), head=g.get("head", 0.012)))
+
+    @staticmethod
+    def _outline(x, y, w, h, r, step):
+        """Points every `step` px clockwise round a rounded rectangle, from the top centre."""
+        r = min(r, w / 2, h / 2)
+        segs = []
+        cx0, cx1, cy0, cy1 = x + r, x + w - r, y + r, y + h - r
+        def arc(cx, cy, a0, a1):
+            n = max(2, int(abs(a1 - a0) * r / step))
+            a = np.linspace(a0, a1, n, endpoint=False)
+            return np.stack([cx + r * np.cos(a), cy + r * np.sin(a)], 1)
+        def seg(p, q):
+            n = max(2, int(math.hypot(q[0] - p[0], q[1] - p[1]) / step))
+            u = np.linspace(0, 1, n, endpoint=False)[:, None]
+            return np.array(p) + u * (np.array(q) - np.array(p))
+        mid = x + w / 2
+        segs += [seg((mid, y), (cx1, y)), arc(cx1, cy0, -math.pi / 2, 0),
+                 seg((x + w, cy0), (x + w, cy1)), arc(cx1, cy1, 0, math.pi / 2),
+                 seg((cx1, y + h), (cx0, y + h)), arc(cx0, cy1, math.pi / 2, math.pi),
+                 seg((x, cy1), (x, cy0)), arc(cx0, cy0, math.pi, 1.5 * math.pi),
+                 seg((cx0, y), (mid, y))]
+        return np.concatenate(segs)
+
+    def apply(self, f, t):
+        u = t / self.T * self.laps + self.phase
+        for b in self.boxes:
+            sub = f[b["sl"]]
+            sub = sub * (1 - b["dark"]) + b["fill"] * b["dark"] + b["add"]
+            L = b["L"]
+            prof = np.zeros(L, np.float32)
+            i = np.arange(L, dtype=np.float32)
+            for j in range(self.n_lights):
+                head = ((u + j / self.n_lights) % 1.0) * L
+                behind = (head - i) % L / L             # 0 at the head, growing back along the tail
+                ahead = (i - head) % L / L
+                tail = np.clip(1 - behind / b["tail"], 0, 1) ** 2
+                spot = np.exp(-(np.minimum(behind, ahead) / b["head"]) ** 2) * 1.5
+                prof = np.maximum(prof, tail + spot)
+            p = prof[b["pidx"]][..., None]
+            sub = sub + p * (b["core"] * self.light_col * 1.4 + b["halo"] * self.light_glow * 0.9)
+            f[b["sl"]] = sub
+
+
 # order matters: stars come off the sky before the clouds move, and the road
 # tracer is set up before the moon and towers that sync to it
 EFFECTS = [("stars", Stars), ("clouds", Clouds), ("traffic", Traffic), ("moon_glow", MoonGlow),
            ("window_lights", Lights), ("house_lights", Lights), ("bridge_neon", Neon),
            ("water", Water), ("sparkles", Sparkles), ("fireflies", Fireflies),
            ("shooting_star", ShootingStar), ("rain", Rain), ("skyline", Skyline),
-           ("city_wave", CityWave), ("haze", Haze)]
+           ("city_wave", CityWave), ("haze", Haze),
+           # drawn last, on top of everything: a redrawn character, then the text boxes
+           ("overlay", Overlay), ("neon_boxes", NeonBoxes)]
 
 
 def build(scene, size):
@@ -986,26 +1162,38 @@ def frame(ctx, fx, t):
 
 # ---------------------------------------------------------------- output
 
-def encode(ctx, fx, path, seconds, final, crop=None):
-    n = int(round(seconds * ctx.fps))
+def encode(ctx, fx, path, seconds, final, crop=None, codec=None, fps=None):
+    """codec: None (preview H.264 / final HEVC), "h264" (plays everywhere,
+    e.g. a browser new tab page) or "gif" (Discord / Notion banners)."""
+    fps = fps or ctx.fps
+    n = int(round(seconds * fps))
     cx, cy, cw, ch = crop or (0, 0, ctx.W, ctx.H)
     cmd = ["ffmpeg", "-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "rgb48le",
-           "-s", f"{cw}x{ch}", "-r", str(ctx.fps), "-i", "-",
-           "-vf", "scale=out_color_matrix=bt709:out_range=tv",
-           "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
-           "-movflags", "+faststart"]
-    if final:
-        # HEVC Main10: hardware-decoded on Apple Silicon; 10-bit keeps the sky free of banding
-        cmd += ["-c:v", "libx265", "-pix_fmt", "yuv420p10le", "-profile:v", "main10",
-                "-preset", "slow", "-crf", "18", "-tag:v", "hvc1",
-                "-x265-params", f"keyint={ctx.fps * 2}:log-level=error"]
+           "-s", f"{cw}x{ch}", "-r", str(fps), "-i", "-"]
+    if codec == "gif":
+        # one palette for the whole loop, so colours don't shimmer between frames
+        cmd += ["-vf", "split[a][b];[a]palettegen=max_colors=256:stats_mode=full[p];"
+                       "[b][p]paletteuse=dither=sierra2_4a:diff_mode=rectangle",
+                "-loop", "0"]
     else:
-        cmd += ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "20", "-preset", "medium"]
+        cmd += ["-vf", "scale=out_color_matrix=bt709:out_range=tv",
+                "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
+                "-movflags", "+faststart"]
+        if codec == "h264":
+            cmd += ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-profile:v", "high",
+                    "-crf", "18", "-preset", "slow", "-g", str(fps * 2)]
+        elif final:
+            # HEVC Main10: hardware-decoded on Apple Silicon; 10-bit keeps the sky free of banding
+            cmd += ["-c:v", "libx265", "-pix_fmt", "yuv420p10le", "-profile:v", "main10",
+                    "-preset", "slow", "-crf", "18", "-tag:v", "hvc1",
+                    "-x265-params", f"keyint={fps * 2}:log-level=error"]
+        else:
+            cmd += ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "20", "-preset", "medium"]
     cmd.append(path)
     p = subprocess.Popen(cmd, stdin=subprocess.PIPE)
     rng = np.random.default_rng(0)
     for i in range(n):
-        f = frame(ctx, fx, (i / ctx.fps) % ctx.T)[cy:cy + ch, cx:cx + cw]
+        f = frame(ctx, fx, (i / fps) % ctx.T)[cy:cy + ch, cx:cx + cw]
         # tiny dither so the smooth sky doesn't band
         f = f * 65535 + rng.uniform(-96, 96, f.shape).astype(np.float32)
         p.stdin.write(np.clip(f, 0, 65535).astype("<u2").tobytes())
@@ -1014,6 +1202,24 @@ def encode(ctx, fx, path, seconds, final, crop=None):
     p.stdin.close()
     if p.wait() != 0:
         sys.exit("ffmpeg failed")
+
+
+def output_geometry(scene, out):
+    """Render size and crop for one output. Without `crop` the whole picture
+    is fitted to the screen (it must have the screen's shape). With `crop`
+    ([x0, y0, x1, y1] in ref pixels) the scene is rendered at the scale that
+    makes that area exactly the screen size, and the area is cut out, so
+    banners and screens of any shape come from one master picture."""
+    size = tuple(out["size"])
+    if "crop" not in out:
+        return size, None
+    rw, rh = scene["ref_size"]
+    x0, y0, x1, y1 = out["crop"]
+    s = size[0] / (x1 - x0)
+    full = (int(round(rw * s)), int(round(rh * s)))
+    cx = min(max(0, int(round(x0 * s))), full[0] - size[0])
+    cy = min(max(0, int(round(y0 * s))), full[1] - size[1])
+    return full, (cx, cy, size[0], size[1])
 
 
 def check_seam(ctx, fx):
@@ -1088,6 +1294,8 @@ def main():
     g.add_argument("--still", type=float, metavar="SECONDS", help="one frame as PNG")
     ap.add_argument("--seconds", type=float, help="preview length (default: whole loop)")
     ap.add_argument("--variant", help="a scenes/variants/*.yml file layered on top of the scene")
+    ap.add_argument("--screen", help="with --still: one output's real size and crop")
+    ap.add_argument("--only", metavar="SCREEN[,SCREEN]", help="with --final: just these outputs")
     ap.add_argument("--closeup", metavar="X,Y,W,H",
                     help="with --preview: a 1:1 crop of the first screen at its real size")
     a = ap.parse_args()
@@ -1103,18 +1311,39 @@ def main():
 
     if a.final:
         os.makedirs(os.path.join(ROOT, "loops"), exist_ok=True)
+        name = scene["name"] + (stem[stem.index("__"):] if "__" in stem else "")
+        only = set(a.only.split(",")) if a.only else None
         for out in scene["outputs"]:
-            size = tuple(out["size"])
-            ctx, fx = build(scene, size)
+            if only and out["screen"] not in only:
+                continue
+            full, crop = output_geometry(scene, out)
+            ctx, fx = build(scene, full)
             seam = check_seam(ctx, fx)
-            path = os.path.join(ROOT, "loops", f"{scene['name']}_{out['screen']}.mp4")
-            print(f"{path}: {size[0]}x{size[1]}, seam error {seam:.2e}")
-            encode(ctx, fx, path, ctx.T, final=True)
+            codec = out.get("codec")
+            ext = "gif" if codec == "gif" else "mp4"
+            path = os.path.join(ROOT, "loops", f"{name}_{out['screen']}.{ext}")
+            print(f"{path}: {out['size'][0]}x{out['size'][1]}, seam error {seam:.2e}")
+            encode(ctx, fx, path, ctx.T, final=True, crop=crop, codec=codec, fps=out.get("fps"))
+        return
+
+    if a.still is not None and a.screen:
+        out = next(o for o in scene["outputs"] if o["screen"] == a.screen)
+        full, crop = output_geometry(scene, out)
+        ctx, fx = build(scene, full)
+        cx, cy, cw, ch = crop or (0, 0, ctx.W, ctx.H)
+        f = frame(ctx, fx, a.still)[cy:cy + ch, cx:cx + cw]
+        os.makedirs(os.path.join(ROOT, "previews"), exist_ok=True)
+        path = os.path.join(ROOT, "previews", f"{stem}_{a.screen}_t{a.still:g}.png")
+        cv2.imwrite(path, cv2.cvtColor((f * 255).astype(np.uint8), cv2.COLOR_RGB2BGR))
+        print(path)
         return
 
     if a.closeup and a.preview:
-        ctx, fx = build(scene, tuple(scene["outputs"][0]["size"]))
+        full, ocrop = output_geometry(scene, scene["outputs"][0])
+        ctx, fx = build(scene, full)
         crop = tuple(int(v) for v in a.closeup.split(","))
+        if ocrop:
+            crop = (crop[0] + ocrop[0], crop[1] + ocrop[1], crop[2], crop[3])
         os.makedirs(os.path.join(ROOT, "previews"), exist_ok=True)
         path = os.path.join(ROOT, "previews", f"{stem}_closeup.mp4")
         print(path)
