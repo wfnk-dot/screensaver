@@ -49,3 +49,12 @@ Double-click **Install Screensaver.command**. It builds the screensaver
 `~/Library/Screen Savers/`, and opens Screen Saver settings. Pick
 **Screensaver** under **Other**; **Options…** sets the loop for each screen.
 Run it again after adding new loops.
+
+### Moving wallpaper
+
+Double-click **Install Wallpaper.command**. It builds `wallpaper-app/` into
+`~/Applications/Wallpaper.app`, copies the loops, and starts it; it starts by
+itself at login. Each screen plays its loop behind the desktop icons, on the
+same 30 s clock, and pauses while fully covered, asleep, locked or showing the
+screensaver. The moon in the menu bar has **Quit Wallpaper**. Quit any other
+wallpaper app first, or its window covers this one.
