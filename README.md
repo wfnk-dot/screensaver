@@ -51,14 +51,13 @@ Two videos, used together by the brave-newtab extension:
 | `loops/frog-meadow_newtab-normal.mp4` (3024 × 1964) | the normal background |
 | `loops/frog-meadow_newtab-ultrawide.mp4` (3440 × 1440) | **Very wide windows** |
 
-Focus point: Left↔Right **30%**, Top↕Bottom **60%**.
+Focus point: Left↔Right **50%**, Top↕Bottom **60%**.
 
 - Ultrawide: the Discord/Notion banner video, untouched, with the rest of the
   picture added round it; the added sky moves with the banner's clouds.
 - Normal: the full purple picture (like Brave's own new tab), original frog,
   with the banner's own neon boxes (copied from the banner video, same
-  animation) just left and right of the frog, so they stay in view on any
-  window shape.
+  animation, about the size of the original text) left and right of the frog.
 - Checked in the extension at ultrawide, 27", half and quarter 27", half and a
   third of the ultrawide and a laptop window: `previews/frog-window-test/all-sizes.jpg`
   (`tools/banner-extend/window-test.js`).

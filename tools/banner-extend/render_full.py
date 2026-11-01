@@ -31,7 +31,8 @@ def dot(f,x,y,c,a,R=3.0):
   ys,xs=slice(max(0,y0),min(H,y0+21)),slice(max(0,x0),min(W,x0+21))
   f[ys,xs]+=g[ys.start-y0:ys.stop-y0, xs.start-x0:xs.stop-x0][...,None]*c*a
 # the banner's boxes: [banner rect of the outline], destination centre in the still
-BOX=[((30.5,70.5,327.5,153.5),(437,739)),((612.5,163.5,936,247.5),(1201.5,908))]
+SC=1.75   # boxes about the size of the original text
+BOX=[((30.5,70.5,327.5,153.5),(322,740)),((612.5,163.5,936,247.5),(1330,900))]
 G=22  # glow margin (banner px)
 layers=[]
 for (x0,y0,x1,y1),(cx,cy) in BOX:
@@ -39,9 +40,12 @@ for (x0,y0,x1,y1),(cx,cy) in BOX:
   h,w=Y1-Y0,X1-X0
   m=np.zeros((h,w),np.uint8)
   cv2.rectangle(m,(int(x0-X0)-3,int(y0-Y0)-3),(int(x1-X0)+3,int(y1-Y0)+3),255,-1)
-  inner=cv2.GaussianBlur(m.astype(np.float32)/255,(0,0),1.2)[...,None]
-  dx,dy=int(round(cx-(x0+x1)/2)),int(round(cy-(y0+y1)/2))
-  layers.append((Y0,Y1,X0,X1,inner,Y0+dy,X0+dx))
+  oh,ow=int(round(h*SC)),int(round(w*SC))
+  inner=cv2.GaussianBlur(cv2.resize(m.astype(np.float32)/255,(ow,oh)),(0,0),1.5)[...,None]
+  ty,tx=int(round(cy-oh/2)),int(round(cx-ow/2))
+  fm=np.zeros((oh,ow),np.float32); e=int(G*SC*0.9); fm[e//3:oh-e//3, e//3:ow-e//3]=1
+  fade=cv2.GaussianBlur(fm,(0,0),e/3)[...,None]
+  layers.append((Y0,Y1,X0,X1,inner,ty,tx,oh,ow,fade))
 def frame(i):
   u=i/N
   F=flows[i]; fx=2.14*F[bym,bxm,0]*wsky; fy=2.14*F[bym,bxm,1]*wsky
@@ -52,10 +56,11 @@ def frame(i):
     x=sx+14*math.sin(2*math.pi*(k[0]*u+ph[0])); y=sy+9*math.sin(2*math.pi*(k[1]*u+ph[1]))
     dot(img,x,y,c,(0.5-0.5*math.cos(2*math.pi*(bk*u+bp)))**2)
   B=col[i]
-  for Y0,Y1,X0,X1,inner,ty,tx in layers:
-    src=B[Y0:Y1,X0:X1]; glow=np.clip(src-bgest[Y0:Y1,X0:X1],0,None)
-    dst=img[ty:ty+Y1-Y0,tx:tx+X1-X0]
-    img[ty:ty+Y1-Y0,tx:tx+X1-X0]=dst*(1-inner)+src*inner+glow*(1-inner)
+  for Y0,Y1,X0,X1,inner,ty,tx,oh,ow,fade in layers:
+    src=cv2.resize(B[Y0:Y1,X0:X1],(ow,oh),interpolation=cv2.INTER_CUBIC)
+    glow=np.clip(src-cv2.resize(bgest[Y0:Y1,X0:X1],(ow,oh),interpolation=cv2.INTER_CUBIC),0,None)
+    dst=img[ty:ty+oh,tx:tx+ow]
+    img[ty:ty+oh,tx:tx+ow]=dst*(1-inner)+src*inner+glow*(1-inner)*fade
   return np.clip(img,0,255).astype(np.uint8)
 if __name__=='__main__':
   if sys.argv[1]=='test':
