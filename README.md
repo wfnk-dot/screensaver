@@ -55,9 +55,10 @@ Focus point: Left↔Right **50%**, Top↕Bottom **60%**.
 
 - Ultrawide: the Discord/Notion banner video, untouched, with the rest of the
   picture added round it; the added sky moves with the banner's clouds.
-- Normal: the full purple picture (like Brave's own new tab), original frog,
-  with the banner's own neon boxes (copied from the banner video, same
-  animation, about the size of the original text) left and right of the frog.
+- Normal: the original purple picture, original frog, with the banner's own
+  neon boxes (same animation, crisp letters redrawn in Marcellus on top) where
+  the original text was: "Fuck bitches" above his head, "Get Money." on the
+  right. Clouds drift (the screensaver's cloud effect; the tree is held still).
 - Checked in the extension at ultrawide, 27", half and quarter 27", half and a
   third of the ultrawide and a laptop window: `previews/frog-window-test/all-sizes.jpg`
   (`tools/banner-extend/window-test.js`).
