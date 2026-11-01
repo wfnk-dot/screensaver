@@ -71,18 +71,30 @@ enum Settings {
         return "\(w)x\(h)"
     }
 
+    /// For a screen with no loop of its own, the loop whose shape is closest,
+    /// preferring the sharper one when shapes tie.
+    static func closestShapeSuffix(for screen: NSScreen) -> String {
+        let aspect = screen.frame.width / screen.frame.height
+        func score(_ size: String) -> (Double, Double) {
+            let wh = size.split(separator: "x").compactMap { Double($0) }
+            return (abs(Foundation.log((wh[0] / wh[1]) / Double(aspect))), -wh[0] * wh[1])
+        }
+        let best = defaultLoopForSize.keys.min { score($0) < score($1) }!
+        return defaultLoopForSize[best]!
+    }
+
     /// The video picked for a screen if nothing was chosen in the options panel.
     static func defaultChoice(for screen: NSScreen) -> String {
         let names = Videos.names()
-        if let suffix = defaultLoopForSize[pixelSize(of: screen)] {
-            // Prefer night-city, the first wallpaper, then any other match.
-            let matches = names.filter { ($0 as NSString).deletingPathExtension.hasSuffix(suffix) }
-            if let pick = matches.first(where: { $0.hasPrefix("night-city") }) ?? matches.first {
-                return pick
-            }
+        let ownLoop = defaultLoopForSize[pixelSize(of: screen)]
+        // Only the main screen falls back to the closest shape (e.g. a MacBook);
+        // other unknown screens copy the main one.
+        guard let suffix = ownLoop ?? (screen == NSScreen.screens.first ? closestShapeSuffix(for: screen) : nil) else {
+            return choiceSameAsMain
         }
-        if screen == NSScreen.screens.first { return names.first ?? choiceBlack }
-        return choiceSameAsMain
+        // Prefer night-city, the first wallpaper, then any other match.
+        let matches = names.filter { ($0 as NSString).deletingPathExtension.hasSuffix(suffix) }
+        return matches.first(where: { $0.hasPrefix("night-city") }) ?? matches.first ?? names.first ?? choiceBlack
     }
 
     static func choice(for screen: NSScreen) -> String {

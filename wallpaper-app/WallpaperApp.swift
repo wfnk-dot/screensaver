@@ -22,11 +22,23 @@ func pixelSize(of screen: NSScreen) -> String {
     return "\(Int((screen.frame.width * scale).rounded()))x\(Int((screen.frame.height * scale).rounded()))"
 }
 
+/// For a screen with no loop of its own (e.g. a MacBook), the loop whose
+/// shape is closest, preferring the sharper one when shapes tie.
+func closestShapeSuffix(for screen: NSScreen) -> String {
+    let aspect = screen.frame.width / screen.frame.height
+    func score(_ size: String) -> (Double, Double) {
+        let wh = size.split(separator: "x").compactMap { Double($0) }
+        return (abs(Foundation.log((wh[0] / wh[1]) / Double(aspect))), -wh[0] * wh[1])
+    }
+    let best = loopForSize.keys.min { score($0) < score($1) }!
+    return loopForSize[best]!
+}
+
 func videoURL(for screen: NSScreen) -> URL? {
     let files = ((try? FileManager.default.contentsOfDirectory(at: videosFolder, includingPropertiesForKeys: nil)) ?? [])
         .filter { ["mp4", "mov", "m4v"].contains($0.pathExtension.lowercased()) }
         .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
-    guard let suffix = loopForSize[pixelSize(of: screen)] else { return nil }
+    let suffix = loopForSize[pixelSize(of: screen)] ?? closestShapeSuffix(for: screen)
     let matches = files.filter { $0.deletingPathExtension().lastPathComponent.hasSuffix(suffix) }
     return matches.first { $0.lastPathComponent.hasPrefix("night-city") } ?? matches.first
 }
