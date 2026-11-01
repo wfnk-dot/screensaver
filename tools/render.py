@@ -1172,8 +1172,9 @@ def encode(ctx, fx, path, seconds, final, crop=None, codec=None, fps=None):
            "-s", f"{cw}x{ch}", "-r", str(fps), "-i", "-"]
     if codec == "gif":
         # one palette for the whole loop, so colours don't shimmer between frames
-        cmd += ["-vf", "split[a][b];[a]palettegen=max_colors=256:stats_mode=full[p];"
-                       "[b][p]paletteuse=dither=sierra2_4a:diff_mode=rectangle",
+        # ordered (bayer) dither keeps the file small enough for Discord (10 MB) and Notion (5 MB)
+        cmd += ["-vf", "split[a][b];[a]palettegen=max_colors=192:stats_mode=full[p];"
+                       "[b][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle",
                 "-loop", "0"]
     else:
         cmd += ["-vf", "scale=out_color_matrix=bt709:out_range=tv",
@@ -1195,7 +1196,9 @@ def encode(ctx, fx, path, seconds, final, crop=None, codec=None, fps=None):
     for i in range(n):
         f = frame(ctx, fx, (i / fps) % ctx.T)[cy:cy + ch, cx:cx + cw]
         # tiny dither so the smooth sky doesn't band
-        f = f * 65535 + rng.uniform(-96, 96, f.shape).astype(np.float32)
+        f = f * 65535
+        if codec != "gif":   # a GIF gets its own dither; noise would only bloat it
+            f += rng.uniform(-96, 96, f.shape).astype(np.float32)
         p.stdin.write(np.clip(f, 0, 65535).astype("<u2").tobytes())
         if i % 60 == 0:
             print(f"  frame {i}/{n}", flush=True)
