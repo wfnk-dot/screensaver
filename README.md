@@ -44,19 +44,8 @@ The MacBook is ignored (it's used through Universal Control). All loops are
 
 ## Frog meadow (new tab)
 
-The Discord/Notion banner, made for the ultrawide new tab: same frog size,
-same neon boxes in the same places, same sky band; a little more meadow at the
-bottom so it fills 3440 × 1440 without cutting the boxes off.
-
-| File | Use it for |
-| --- | --- |
-| `loops/frog-meadow_newtab-ultrawide.mp4` | Brave new tab on the ultrawide (H.264) |
-| `loops/frog-meadow_widescreen.mp4` | Mac screensaver, main screen (HEVC) |
-
-- `sources/frog-meadow_banner-layout.png`: the banner's background rebuilt at full
-  quality (sky band joined onto the meadow, as the banner does), no text, no frog.
-- `sources/frog-meadow.png`: the whole clean background it's cut from.
-- `sources/frog-meadow_frog.png`: the frog, redrawn sharp, no purple outline.
-- The neon boxes are drawn by the renderer (`neon_boxes`, Marcellus font), placed
-  by measuring the banner. Two lights run round each box every 4 s, in step.
-- Loops are 8 seconds.
+`loops/frog-meadow_newtab-ultrawide.mp4` (3440 × 1440, H.264): the
+Discord/Notion banner video, untouched, with the rest of the picture added
+round it (more sky, the frog's feet and the grass below, more tree on the
+right). The added sky moves with the banner's clouds. How it's made:
+`tools/banner-extend/README.md`.
