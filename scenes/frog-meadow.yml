@@ -19,16 +19,15 @@ preview_width: 1552
 seed: 11
 
 outputs:
-  # Brave new tab page (H.264 plays in every browser)
+  # Brave new tab page (H.264 plays in every browser): the banner, uncropped
   - {screen: newtab-ultrawide, size: [3440, 1440], crop: [0, 0, 3104, 1299], codec: h264}
-  - {screen: newtab-16x9, size: [2560, 1440], crop: [237, 0, 2546, 1299], codec: h264}
+  - {screen: newtab-16x9, size: [2560, 1440], crop: [238, 0, 2547, 1299], codec: h264}
+  # The full picture at its original shape and size (3024 x 1964)
+  - {screen: full, size: [3024, 1964], crop: [552, 0, 2552, 1299], codec: h264}
   # Mac screensaver screens (HEVC, like the other loops)
   - {screen: widescreen, size: [3440, 1440], crop: [0, 0, 3104, 1299]}
-  - {screen: 27in, size: [2560, 1440], crop: [237, 0, 2546, 1299]}
-  - {screen: arzopa, size: [1920, 1080], crop: [237, 0, 2546, 1299]}
-  # Discord profile banner / Notion cover: the same picture, cropped round the frog
-  - {screen: banner, size: [960, 340], crop: [470, 300, 2670, 1079], codec: gif, fps: 15}
-  - {screen: banner-hd, size: [1920, 680], crop: [470, 300, 2670, 1079], codec: h264}
+  - {screen: 27in, size: [2560, 1440], crop: [238, 0, 2547, 1299]}
+  - {screen: arzopa, size: [1920, 1080], crop: [238, 0, 2547, 1299]}
 
 effects:
   stars:
@@ -59,27 +58,25 @@ effects:
     min_glow: 0
     strength: 1.1
 
-  overlay:               # the redrawn frog, on top of the meadow
+  overlay:               # the frog, redrawn sharp, at the banner's size (1.3x) and place
     image: sources/frog-meadow_frog.png
-    pixels_per_ref: 2
-    at: [1159, 714]
+    pixels_per_ref: 1.53846
+    at: [1107.15, 591.7]
 
-  neon_boxes:
+  neon_boxes:            # measured off the Discord/Notion banner (1 banner px = 2.3251 ref px)
     font: fonts/Marcellus-Regular.ttf
-    text_size: 84
-    padding: 46
-    min_width: 530
-    height: 136
-    radius: 32
-    text: [1.0, 0.84, 1.0]
-    text_glow: [1.0, 0.42, 0.95]
-    line_width: 4.4
+    padding: 58.5
+    height: 194
+    radius: 30
+    line_width: 4.6
     line_strength: 1.4
     glow_radius: 17
     text_glow_strength: 1.5
-    lights: 2            # two lights chase round each box, opposite each other
-    laps: 1              # once round per loop; every box in step
+    text: [1.0, 0.84, 1.0]
+    text_glow: [1.0, 0.42, 0.95]
+    lights: 2            # two lights chase clockwise round each box, opposite each other
+    laps: 2              # once round every 4 s, like the banner; every box in step
     tail: 0.16
     boxes:
-      - {text: "Fuck bitches", center: [840, 744]}
-      - {text: "Get Money.", center: [1916, 910]}
+      - {text: "Fuck bitches", center: [692.6, 618.6], text_size: 104.4, min_width: 690.6}
+      - {text: "Get Money.", center: [2076.6, 836.0], text_size: 118.7, min_width: 752.2}

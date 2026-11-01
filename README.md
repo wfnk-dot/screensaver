@@ -42,32 +42,26 @@ Default mapping for the screensaver:
 The MacBook is ignored (it's used through Universal Control). All loops are
 30 s; start each screen at `(current time) mod 30 s` so they stay in step.
 
-## Frog meadow (new tab, Discord, Notion)
+## Frog meadow (new tab)
 
-The purple frog scene with the neon "Fuck bitches / Get Money." boxes. One
-master picture; every version is a crop of it, so they always match.
+The Discord/Notion banner, uncropped: the same frog size, the same neon boxes
+in the same places, with the full picture around them. (The banners themselves
+are left as they are; they join the sky on top of the meadow to fit, so they
+aren't a plain crop.)
 
 | File | Use it for |
 | --- | --- |
 | `loops/frog-meadow_newtab-ultrawide.mp4` | Brave new tab on the ultrawide (3440 × 1440) |
 | `loops/frog-meadow_newtab-16x9.mp4` | Brave new tab on a normal screen (2560 × 1440) |
-| `loops/frog-meadow_banner.gif` | Discord profile banner, Notion cover (960 × 340) |
-| `loops/frog-meadow_banner-hd.mp4` | Same banner, twice the size, as a video |
-| `loops/frog-meadow__dont-be_banner.gif` | Notion "Trades" cover ("Don't be / a cunt.") |
+| `loops/frog-meadow_full.mp4` | The whole picture at its original shape (3024 × 1964) |
 | `loops/frog-meadow_widescreen.mp4`, `_27in`, `_arzopa` | Mac screensaver screens |
 
 What's in it:
-- `sources/frog-meadow.png`: the clean background (no text, no frog). Built from
-  the purple still (middle) and the widened new-tab video (sides), with the old
-  text removed by AI fill.
+- `sources/frog-meadow.png`: the clean background (no text, no frog): the purple
+  still in the middle and the widened new-tab video at the sides, old text removed.
 - `sources/frog-meadow_frog.png`: the frog, redrawn sharp from the original green
-  picture (`sources/frog-meadow_original-green.jpg`): smooth outline, flat colours,
-  lilac edge glow.
-- The neon boxes are drawn by the renderer (`neon_boxes` effect) in Marcellus
-  (`fonts/`), so they're sharp at any size. Both boxes run the same two lights
-  round their outline at the same moment: always in sync.
-- Loops are 8 seconds (start each screen at `(current time) mod 8 s`).
-
-**New words** (e.g. another Notion page): copy `scenes/variants/dont-be.yml`,
-change the two `text:` lines, and run
-`python3 tools/render.py scenes/frog-meadow.yml --variant scenes/variants/<name>.yml --final`.
+  picture, no purple outline. Placed at the banner's size (1.3×) and position.
+- The neon boxes are drawn by the renderer (`neon_boxes`, Marcellus font in
+  `fonts/`), sized and placed by measuring the banner. Two lights run clockwise
+  round each box once every 4 s, in step on both boxes, like the banner.
+- Loops are 8 seconds.
