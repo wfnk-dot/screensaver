@@ -44,24 +44,19 @@ The MacBook is ignored (it's used through Universal Control). All loops are
 
 ## Frog meadow (new tab)
 
-The Discord/Notion banner, uncropped: the same frog size, the same neon boxes
-in the same places, with the full picture around them. (The banners themselves
-are left as they are; they join the sky on top of the meadow to fit, so they
-aren't a plain crop.)
+The Discord/Notion banner, made for the ultrawide new tab: same frog size,
+same neon boxes in the same places, same sky band; a little more meadow at the
+bottom so it fills 3440 × 1440 without cutting the boxes off.
 
 | File | Use it for |
 | --- | --- |
-| `loops/frog-meadow_newtab-ultrawide.mp4` | Brave new tab on the ultrawide (3440 × 1440) |
-| `loops/frog-meadow_newtab-16x9.mp4` | Brave new tab on a normal screen (2560 × 1440) |
-| `loops/frog-meadow_full.mp4` | The whole picture at its original shape (3024 × 1964) |
-| `loops/frog-meadow_widescreen.mp4`, `_27in`, `_arzopa` | Mac screensaver screens |
+| `loops/frog-meadow_newtab-ultrawide.mp4` | Brave new tab on the ultrawide (H.264) |
+| `loops/frog-meadow_widescreen.mp4` | Mac screensaver, main screen (HEVC) |
 
-What's in it:
-- `sources/frog-meadow.png`: the clean background (no text, no frog): the purple
-  still in the middle and the widened new-tab video at the sides, old text removed.
-- `sources/frog-meadow_frog.png`: the frog, redrawn sharp from the original green
-  picture, no purple outline. Placed at the banner's size (1.3×) and position.
-- The neon boxes are drawn by the renderer (`neon_boxes`, Marcellus font in
-  `fonts/`), sized and placed by measuring the banner. Two lights run clockwise
-  round each box once every 4 s, in step on both boxes, like the banner.
+- `sources/frog-meadow_banner-layout.png`: the banner's background rebuilt at full
+  quality (sky band joined onto the meadow, as the banner does), no text, no frog.
+- `sources/frog-meadow.png`: the whole clean background it's cut from.
+- `sources/frog-meadow_frog.png`: the frog, redrawn sharp, no purple outline.
+- The neon boxes are drawn by the renderer (`neon_boxes`, Marcellus font), placed
+  by measuring the banner. Two lights run round each box every 4 s, in step.
 - Loops are 8 seconds.

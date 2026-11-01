@@ -1,37 +1,29 @@
-# Frog meadow: the purple "Fuck bitches / Get Money." scene, as one master
-# that every version is cut from (new tab, screens, Discord and Notion banners).
+# Frog meadow: the Discord/Notion banner, made for the new tab.
 #
-# Source: sources/frog-meadow.png is the clean background (no text, no frog),
-# built from the purple still (middle) and the widened new-tab video (sides),
-# with the old text removed. The frog is redrawn as a separate sharp layer
-# (sources/frog-meadow_frog.png, traced from the original green picture).
-# The text boxes are drawn fresh by the renderer, so they're sharp at any size
-# and the text can be changed (see scenes/variants/frog-meadow_*.yml).
-#
-# Coordinates are pixels on the 3104 x 1299 master (ref_size).
+# The banner joins the sky band (from higher up the picture) onto the meadow.
+# sources/frog-meadow_banner-layout.png rebuilds exactly that at full quality
+# from the clean background (sources/frog-meadow.png: no text, no frog), only a
+# little taller at the bottom so it fills a 3440 x 1440 screen. The frog
+# (redrawn sharp, no purple outline) and the neon boxes are placed and sized by
+# measuring the banner. Coordinates: 1 banner pixel = 2.3235 ref pixels.
 
 name: frog-meadow
-source: sources/frog-meadow.png
-ref_size: [3104, 1299]
+source: sources/frog-meadow_banner-layout.png
+ref_size: [2231, 933]
 loop_seconds: 8
 fps: 30
-preview_width: 1552
+preview_width: 1720
 seed: 11
 
 outputs:
-  # Brave new tab page (H.264 plays in every browser): the banner, uncropped
-  - {screen: newtab-ultrawide, size: [3440, 1440], crop: [0, 0, 3104, 1299], codec: h264}
-  - {screen: newtab-16x9, size: [2560, 1440], crop: [238, 0, 2547, 1299], codec: h264}
-  # The full picture at its original shape and size (3024 x 1964)
-  - {screen: full, size: [3024, 1964], crop: [552, 0, 2552, 1299], codec: h264}
-  # Mac screensaver screens (HEVC, like the other loops)
-  - {screen: widescreen, size: [3440, 1440], crop: [0, 0, 3104, 1299]}
-  - {screen: 27in, size: [2560, 1440], crop: [238, 0, 2547, 1299]}
-  - {screen: arzopa, size: [1920, 1080], crop: [238, 0, 2547, 1299]}
+  # Brave new tab page on the ultrawide (H.264 plays in every browser)
+  - {screen: newtab-ultrawide, size: [3440, 1440], codec: h264}
+  # Mac screensaver, main screen (HEVC, like the other loops)
+  - {screen: widescreen, size: [3440, 1440]}
 
 effects:
   stars:
-    regions: [{rect: [0, 0, 3104, 330]}]
+    regions: [{rect: [0, 0, 2231, 230]}]
     size: 3
     threshold: 0.04
     max_area: 12
@@ -39,29 +31,28 @@ effects:
     range: [0.2, 2.2]
 
   sparkles:              # a few stars flare into four-point sparkles, as on the banner
-    regions: [{rect: [0, 0, 3104, 330]}]
-    count: 10
+    regions: [{rect: [0, 0, 2231, 230]}]
+    count: 8
     size: 22
     max_flares: 2
     flare_seconds: 1.6
     strength: 1.0
 
-  fireflies:             # soft specks in the dark meadow and hills, lavender and amber
+  fireflies:             # soft specks in the dark meadow, lavender and amber
     areas:
-      - {rect: [40, 560, 1050, 1250], count: 9}
-      - {rect: [1600, 1000, 3060, 1260], count: 7}
-      - {rect: [2300, 620, 3060, 1000], count: 4}
-      - {rect: [1050, 1050, 1600, 1270], count: 2}
+      - {rect: [30, 420, 780, 900], count: 9}
+      - {rect: [1400, 650, 2200, 900], count: 6}
+      - {rect: [1000, 300, 1500, 420], count: 2}
     size: [7, 11]
     wander: 70
     colors: [[0.78, 0.6, 1.0], [1.0, 0.62, 0.32]]
     min_glow: 0
     strength: 1.1
 
-  overlay:               # the frog, redrawn sharp, at the banner's size (1.3x) and place
+  overlay:               # the frog, redrawn sharp, at the banner's size and place
     image: sources/frog-meadow_frog.png
     pixels_per_ref: 1.53846
-    at: [1107.15, 591.7]
+    at: [830.05, 233.15]
 
   neon_boxes:            # measured off the Discord/Notion banner (1 banner px = 2.3251 ref px)
     font: fonts/Marcellus-Regular.ttf
@@ -78,5 +69,5 @@ effects:
     laps: 2              # once round every 4 s, like the banner; every box in step
     tail: 0.16
     boxes:
-      - {text: "Fuck bitches", center: [692.6, 618.6], text_size: 104.4, min_width: 690.6}
-      - {text: "Get Money.", center: [2076.6, 836.0], text_size: 118.7, min_width: 752.2}
+      - {text: "Fuck bitches", center: [415.5, 260.05], text_size: 104.4, min_width: 690.6}
+      - {text: "Get Money.", center: [1799.5, 477.45], text_size: 118.7, min_width: 752.2}
